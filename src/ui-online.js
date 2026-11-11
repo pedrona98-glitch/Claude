@@ -1,32 +1,38 @@
-// Schermate online: arena PvP, alleanza, guerra e chat.
+// Schermate online: lega PvP settimanale, alleanza con guerra settimanale, chat.
 import * as G from './game.js';
-import { LEAGUES, ALLIANCE_CREATE_GEMS, AIRCRAFT } from './data.js';
+import { ALLIANCE_CREATE_GEMS, AGES } from './data.js';
 import { fmt, fmtTime } from './format.js';
 import { t } from './i18n.js';
 import { sfx } from './audio.js';
 import { ic, withIcon } from './icons.js';
 import { Online } from './online.js';
-import { el, html, cost } from './ui.js';
+import { LEAGUE_IDS, CLAN_TIERS } from '../shared/social.js';
+import { el, html, cost, packHtml } from './ui.js';
 
 const SYNC_EVERY_MS = 60e3;
+const WAR_FLUSH_MS = 20e3;
 const CHAT_POLL_MS = 4000;
+const SHAPE_COLORS = { biplane: '#d95d39', mono: '#5aa9e6', fighter: '#9b8cf0', jet: '#f2a25c', stealth: '#4fd1c5' };
 
 export function createOnlineUI(kit) {
   const { S, now, toast, openModal, row, setBtn, heading } = kit;
   const o = () => S().online;
-  let me = null, arena = null, ally = null, allyList = null;
-  let busy = false, claiming = false, lastSync = 0;
+  let me = null, lg = null, clan = null, clanList = null, lastWeek = null;
+  let busy = false, claiming = false, lastSync = 0, lastFlush = 0;
 
   // ---------- comunicazione ----------
   function absorb(r) {
     if (!r) return r;
     if (r.user) me = r.user;
-    if ('alliance' in r) o().allyLevel = r.alliance ? r.alliance.level : 0;
-    if (r.user && r.user.pending > 0 && !claiming) {
+    if (r.week) lastWeek = r.week;
+    if (r.user && r.user.hasPack && !claiming) {
       claiming = true;
       call('claim').then((c) => {
         claiming = false;
-        if (c && c.reward.gems > 0) { S().gems += c.reward.gems; sfx.reward(); toast(t('pending_gems', c.reward.gems)); kit.app.save(); }
+        if (c && Object.keys(c.reward).length) {
+          G.give(S(), c.reward); sfx.reward(); kit.app.save();
+          openModal({ title: t('season_rewards'), icon: 'trophy', body: html('div', 'big-coins wrap', packHtml(c.reward)), buttons: [{ label: t('collect') }] });
+        }
       });
     }
     return r;
@@ -61,12 +67,26 @@ export function createOnlineUI(kit) {
     if (!o().token) return Promise.resolve(null);
     if (!force && now() - lastSync < 5000) return Promise.resolve(null);
     lastSync = now();
-    const s = S();
-    return call('sync', { dps: G.totalDps(s), hp: G.squadMaxHp(s), stage: s.stage, plane: s.aircraft.equipped }, { quiet: true });
+    const s = S(), st = G.stats(s), hull = s.parts.hull;
+    return call('sync', { dps: st.dps, hp: st.hp, stage: s.stage, plane: AGES[hull ? hull.age : 0].shape }, { quiet: true });
   }
-  /** Chiamato a ogni aggiornamento dell'interfaccia: tiene il profilo allineato sul server. */
+  /** Invia al server le azioni che valgono punti nella guerra d'alleanza. */
+  async function flushWar() {
+    const s = S();
+    lastFlush = now();
+    if (!o().token || !Object.keys(s.warLog).length) return;
+    const log = G.takeWarLog(s);
+    const r = await call('war.report', { log }, { quiet: true });
+    if (!r) for (const [k, v] of Object.entries(log)) s.warLog[k] = (s.warLog[k] || 0) + v; // si riprova più tardi
+    else if (r.added) { toast(t('war_points', fmt(r.added))); if (clan && clan.war) clan.war.myPoints += r.added; }
+    kit.app.save();
+  }
+  kit.app.flushWar = flushWar;
+  /** Chiamato a ogni aggiornamento dell'interfaccia. */
   function heartbeat() {
-    if (o().token && now() - lastSync > SYNC_EVERY_MS) sync();
+    if (!o().token) return;
+    if (now() - lastSync > SYNC_EVERY_MS) sync();
+    if (now() - lastFlush > WAR_FLUSH_MS) flushWar();
   }
 
   function rerender(tab) { if (kit.currentTab() === tab) kit.render(); }
@@ -74,28 +94,26 @@ export function createOnlineUI(kit) {
     if (busy || !o().token) return;
     busy = true;
     await sync(true);
-    if (tab === 'arena') arena = await call('arena.list');
+    if (tab === 'arena') lg = await call('league.get');
     else {
-      const mine = await call('ally.get', {}, { quiet: true });
-      ally = mine ? mine : null;
-      allyList = ally ? null : (await call('ally.list'))?.alliances || [];
+      await flushWar();
+      clan = await call('clan.get', {}, { quiet: true });
+      clanList = clan ? null : (await call('clan.list'))?.alliances || [];
     }
     busy = false;
     rerender(tab);
   }
   function enter(tab) {
-    if (tab === 'arena') { arena = null; } else if (tab === 'ally') { ally = null; allyList = null; }
+    if (tab === 'arena') lg = null; else if (tab === 'ally') { clan = null; clanList = null; }
   }
 
   // ---------- pezzi comuni ----------
-  function demoTag() {
-    return Online.demo ? html('div', 'demo-tag', withIcon('flask', t('demo_tag'))) : null;
-  }
-  function intro(text) {
+  const demoTag = () => (Online.demo ? html('div', 'demo-tag', withIcon('flask', t('demo_tag'))) : null);
+  function intro(text, icon) {
     const card = el('div', 'card center');
     const btn = el('button', 'btn primary wide', t('enter'));
     btn.onclick = askName;
-    card.append(html('div', 'card-icon', ic('swords')), el('p', 'sub', text), btn);
+    card.append(html('div', 'card-icon', ic(icon)), el('p', 'sub', text), btn);
     kit.panel.append(card);
     const tag = demoTag(); if (tag) kit.panel.append(tag);
   }
@@ -110,213 +128,180 @@ export function createOnlineUI(kit) {
     const body = el('div', 'form'); body.append(el('p', '', t('online_intro')), input);
     openModal({
       title: t('callsign'), icon: 'users', body,
-      buttons: [
-        { label: t('cancel'), kind: 'ghost' },
-        { label: t('enter'), onClick: async () => { if (!(await register(input.value))) return false; kit.render(); } },
-      ],
+      buttons: [{ label: t('cancel'), kind: 'ghost' }, { label: t('enter'), onClick: async () => { if (!(await register(input.value))) return false; kit.render(); } }],
     });
     setTimeout(() => input.focus(), 50);
   }
-  const league = (rating) => [...LEAGUES].reverse().find((l) => rating >= l.min) || LEAGUES[0];
   const nameTag = (p) => (p.tag ? `[${p.tag}] ${p.name}` : p.name);
-  function planeOf(p) {
-    const a = AIRCRAFT.find((x) => x.id === p.plane) || AIRCRAFT[0];
-    return kit.planeIcon(a.shape, a.color);
-  }
+  const planeOf = (p) => kit.planeIcon(p.plane in SHAPE_COLORS ? p.plane : 'biplane', SHAPE_COLORS[p.plane] || SHAPE_COLORS.biplane);
   const loading = () => kit.panel.append(el('p', 'hint center', '···'));
+  const leagueName = (i) => t('lg_' + LEAGUE_IDS[i]);
+  const tierName = (i) => (i >= 0 ? CLAN_TIERS[i][0] : 'D');
 
-  /** Finestra del duello: le barre scendono, poi compare l'esito. */
-  function showFight(r, extraLine) {
-    const body = el('div', 'duel');
-    const bar = (label, left, cls) => {
-      const w = el('div', 'duel-side'), track = el('div', 'meter ' + cls), fill = el('div', 'meter-fill');
-      track.append(fill); w.append(el('div', 'duel-name', label), track);
-      requestAnimationFrame(() => requestAnimationFrame(() => { fill.style.width = Math.round(left * 100) + '%'; }));
-      return w;
-    };
-    const result = el('div', 'duel-result');
-    body.append(bar(o().name, r.myLeft, 'good'), el('div', 'duel-vs', t('vs')), bar(nameTag(r.opponent), r.oppLeft, 'bad'), result);
-    const m = openModal({ title: '···', icon: 'swords', body, buttons: [{ label: t('close'), kind: 'ghost' }] });
-    sfx.rocket();
-    setTimeout(() => {
-      m.title.textContent = r.win ? t('victory') : t('defeat_pvp');
-      m.box.classList.add(r.win ? 'won' : 'lost');
-      for (const line of extraLine) result.append(html('div', 'duel-line', line));
-      if (r.win) sfx.reward(); else sfx.fail();
-    }, 1500);
+  /** Testo sul pulsante laterale: tempo rimasto alla stagione / alla guerra. */
+  function sideInfo(arenaBtn, warBtn, n) {
+    const week = lastWeek;
+    const label = week ? fmtTime(Math.max(0, (week.endsAt - n) / 1000)).split(' ')[0] : '';
+    if (!arenaBtn.hidden) {
+      arenaBtn.querySelector('span').textContent = label || t('tab_arena');
+      arenaBtn.classList.toggle('has-dot', !!me && me.tickets > 0 && !(week && week.day === 6));
+    }
+    if (!warBtn.hidden) {
+      warBtn.querySelector('span').textContent = label || t('war');
+      warBtn.classList.toggle('has-dot', !!week && week.day === 5 && !!clan && !!clan.war && clan.war.tickets > 0);
+    }
   }
 
-  // ---------- arena ----------
+  // ---------- lega ----------
   function tabArena() {
-    if (!o().token) return intro(t('arena_hint'));
-    if (!arena || !me) { loading(); load('arena'); return; }
-    const lg = league(me.rating);
-    const card = el('div', 'card');
-    const head = el('div', 'card-head');
-    head.append(html('div', 'league lg-' + lg.id, ic('trophy')), (() => {
-      const d = el('div', 'info');
-      d.append(el('div', 'name', `${t('lg_' + lg.id)} · ${t('trophies', me.rating)}`), el('div', 'sub', `${o().name} · ${t('rank_n', arena.rank)} · ${t('server_n', me.server)}`));
-      return d;
-    })());
-    const tick = el('div', 'sub');
+    if (!G.unlocked(S(), 'arena')) return kit.locked('arena', t('arena_lock'));
+    if (!o().token) return intro(t('arena_hint'), 'swords');
+    if (!lg) { loading(); load('arena'); return; }
+    const card = el('div', 'card'), head = el('div', 'card-head'), info = el('div', 'info');
+    info.append(el('div', 'name', `${leagueName(lg.league)} · ${t('points_n', lg.points)}`),
+      el('div', 'sub', `${o().name} · ${t('rank_of', lg.rank, lg.size)} · ${t('server_n', me.server)}`));
+    head.append(html('div', 'league lg-' + LEAGUE_IDS[lg.league], ic('trophy')), info);
+    const zone = el('div', 'sub');
+    const [up, down] = lg.move;
+    zone.textContent = [up ? t('zone_up', up) : '', down <= 100 ? t('zone_down', down) : ''].filter(Boolean).join(' · ') || t('zone_none');
+    const timer = el('div', 'sub');
     kit.addUpdater(() => {
-      const left = me.nextTicketAt ? (me.nextTicketAt - now()) / 1000 : 0;
-      tick.textContent = t('tickets', me.tickets, me.ticketsMax) + (me.tickets < me.ticketsMax && left > 0 ? ` · ${t('next_ticket', fmtTime(left))}` : '');
-      if (me.nextTicketAt && left <= 0 && !busy) { me.nextTicketAt = 0; load('arena'); }
+      const left = Math.max(0, (lg.week.endsAt - now()) / 1000);
+      timer.textContent = `${t('tickets', me.tickets, me.ticketsMax)} · ${lg.week.closed ? t('season_next', fmtTime(left)) : t('season_ends', fmtTime(left))}`;
     });
     const actions = el('div', 'btn-row');
-    const top = html('button', 'btn ghost', withIcon('trophy', t('leaderboard'))); top.onclick = showTop;
-    const again = html('button', 'btn ghost', withIcon('refresh', t('new_opponents'))); again.onclick = () => { arena = null; kit.render(); };
+    const top = html('button', 'btn ghost', withIcon('trophy', t('leaderboard'))); top.onclick = showTable;
+    const again = html('button', 'btn ghost', withIcon('refresh', t('new_opponents'))); again.onclick = () => { lg = null; kit.render(); };
     actions.append(top, again);
-    card.append(head, tick, actions);
-    if (me.tickets === 0 && me.refillsLeft > 0) {
-      const refill = html('button', 'btn ad wide', kit.adHtml(t('refill')));
-      refill.onclick = () => kit.rewarded(async () => { await call('arena.refill'); arena = null; kit.render(); });
-      card.append(refill);
-    }
+    card.append(head, zone, timer, actions);
     kit.panel.append(card);
     const tag = demoTag(); if (tag) kit.panel.append(tag);
-
+    if (lg.lastSeason) kit.panel.append(el('p', 'hint', t('last_season', leagueName(lg.lastSeason.league), lg.lastSeason.rank)));
+    if (lg.week.closed) kit.panel.append(el('p', 'hint center', t('season_closed')));
     const myPower = G.power(S());
-    for (const p of arena.opponents) {
+    for (const p of lg.opponents) {
       const x = row({ iconEl: planeOf(p), title: nameTag(p) });
       const stronger = p.power > myPower * 1.05, weaker = p.power < myPower * 0.95;
-      x.sub.innerHTML = `${cost('trophy', p.rating)} · ${t('power')} <b class="${stronger ? 'neg' : weaker ? 'pos' : ''}">${fmt(p.power)}</b>${p.bot && !Online.demo ? ` · ${t('training_bot')}` : ''}`;
+      x.sub.innerHTML = `${t('points_n', p.points)} · ${t('power')} <b class="${stronger ? 'neg' : weaker ? 'pos' : ''}">${fmt(p.power)}</b>${p.bot && !Online.demo ? ` · ${t('training_bot')}` : ''}`;
       setBtn(x, t('attack'), '', me.tickets > 0, 'danger');
       x.btn.onclick = async () => {
         x.btn.disabled = true;
-        const r = await call('arena.fight', { id: p.id });
-        if (!r) { arena = null; kit.render(); return; }
-        const s = S(), coins = Math.ceil(G.incomePerSec(s, now()) * r.reward.coinSeconds);
-        s.coins += coins; s.gems += r.reward.gems; kit.app.save();
-        showFight(r, [
-          `<b class="${r.delta >= 0 ? 'pos' : 'neg'}">${r.delta >= 0 ? '+' : ''}${r.delta}</b> ${ic('trophy')}`,
-          `+${cost('coin', coins)}${r.reward.gems ? ` &nbsp; +${cost('gem', r.reward.gems)}` : ''}`,
-        ]);
-        arena = null; kit.render();
+        const r = await call('league.fight', { id: p.id });
+        lg = null;
+        if (r) kit.fightModal({ me: o().name, foe: nameTag(r.opponent), win: r.win, myLeft: r.myLeft, foeLeft: r.oppLeft, lines: [`<b class="${r.win ? 'pos' : ''}">+${r.points}</b> ${t('points')}`] });
+        kit.render();
       };
       kit.panel.append(x.r);
     }
-    kit.panel.append(el('p', 'hint', `${t('arena_hint')} ${t('power')}: ${fmt(myPower)}.`));
+    kit.panel.append(el('p', 'hint', t('arena_rules')));
   }
 
-  async function showTop() {
-    const r = await call('arena.top');
-    if (!r) return;
-    const list = el('div', 'board');
-    for (const p of r.top) {
-      const line = el('div', 'board-row' + (p.me ? ' me' : ''));
-      line.append(el('span', 'board-rank', String(p.rank)), el('span', 'board-name', nameTag(p)), html('span', 'board-score', cost('trophy', p.rating)));
+  function showTable() {
+    const list = el('div', 'board'), [up, down] = lg.move;
+    for (const p of lg.table) {
+      const line = el('div', 'board-row' + (p.me ? ' me' : '') + (p.rank <= up ? ' up' : p.rank >= down ? ' down' : ''));
+      line.append(el('span', 'board-rank', String(p.rank)), el('span', 'board-name', nameTag(p)), el('span', 'board-score', fmt(p.points)));
       list.append(line);
     }
-    openModal({ title: `${t('leaderboard')} · ${t('server_n', r.server)}`, body: list, cls: 'tall', buttons: [{ label: t('close'), kind: 'ghost' }] });
+    openModal({ title: `${leagueName(lg.league)} · ${t('server_n', me.server)}`, body: list, cls: 'tall', buttons: [{ label: t('close'), kind: 'ghost' }] });
   }
 
   // ---------- alleanza ----------
   function tabAlliance() {
-    if (!o().token) return intro(t('ally_none'));
-    if (!ally && !allyList) { loading(); load('ally'); return; }
-    if (!ally) return allianceBrowser();
-    const a = ally.alliance, left = ally.left;
-
-    const card = el('div', 'card');
-    const head = el('div', 'card-head');
-    const info = el('div', 'info');
-    info.append(el('div', 'name', `[${a.tag}] ${a.name}`), el('div', 'sub', `${t('level_n', a.level)} · ${t('members_n', a.members.length, a.max)} · ${t('ally_bonus', Math.round(a.level * 2))}`));
-    head.append(html('div', 'league', ic('shield')), info);
-    const xp = el('div', 'meter gold'), xpFill = el('div', 'meter-fill'); xpFill.style.width = Math.min(100, (a.xp / a.xpNext) * 100) + '%'; xp.append(xpFill);
-    card.append(head, xp);
+    if (!G.unlocked(S(), 'alliance')) return kit.locked('alliance', t('ally_lock'));
+    if (!o().token) return intro(t('ally_none'), 'shield');
+    if (!clan && !clanList) { loading(); load('ally'); return; }
+    if (!clan) return browser();
+    const c = clan.clan, w = clan.war;
+    const card = el('div', 'card'), head = el('div', 'card-head'), info = el('div', 'info');
+    info.append(el('div', 'name', `[${c.tag}] ${c.name}`), el('div', 'sub', `${t('tier_n_clan', tierName(c.tier), c.tp)} · ${t('members_n', c.members.length, c.max)}`));
+    head.append(html('div', 'league tier-' + tierName(c.tier), `<b>${tierName(c.tier)}</b>`), info);
     const actions = el('div', 'btn-row');
     const chat = html('button', 'btn ghost', withIcon('chat', t('chat'))); chat.onclick = () => openChat('alliance');
     actions.append(chat);
-    card.append(actions);
+    card.append(head, actions);
     kit.panel.append(card);
     const tag = demoTag(); if (tag) kit.panel.append(tag);
 
-    const act = async (action, payload, after) => {
-      const r = await call(action, payload);
-      if (r) { ally = r; after?.(r); kit.app.save(); }
-      kit.render();
-    };
-
-    const donate = row({ icon: 'coin', title: t('donate') });
-    donate.sub.textContent = `${t('donate_d')} · ${t('left_n', left.donations)}`;
-    const price = () => Math.max(100, Math.ceil(G.incomePerSec(S(), now()) * 600));
-    kit.addUpdater(() => setBtn(donate, `+${cost('gem', 2)}`, cost('coin', price()), left.donations > 0 && S().coins >= price()));
-    donate.btn.onclick = () => {
-      const c = price();
-      if (S().coins < c) { toast(t('not_enough_coins')); return; }
-      act('ally.donate', {}, (r) => { S().coins -= c; S().gems += r.reward.gems; sfx.reward(); });
-    };
-
-    const boss = row({ icon: 'skull', title: `${t('ally_boss')} · ${t('lvl')} ${a.boss.level}` });
-    const bm = el('div', 'meter bad'), bf = el('div', 'meter-fill'); bf.style.width = (a.boss.hp / a.boss.maxHp) * 100 + '%'; bm.append(bf);
-    boss.sub.textContent = `${fmt(a.boss.hp)} / ${fmt(a.boss.maxHp)} · ${t('left_n', left.boss)}`;
-    boss.sub.after(bm);
-    setBtn(boss, t('attack'), '', left.boss > 0, 'danger');
-    boss.btn.onclick = () => act('ally.boss', {}, (r) => { sfx.boss(); toast(r.killed ? t('boss_down') : t('boss_hit', fmt(r.dmg))); });
-    kit.panel.append(donate.r, boss.r, heading(t('war')));
-
-    if (a.lastWar) kit.panel.append(el('p', 'hint', t(a.lastWar.won ? 'war_last_won' : 'war_last_lost', a.lastWar.mine, a.lastWar.theirs)));
-    if (!a.war) kit.panel.append(el('p', 'hint', t('war_none')));
-    else {
-      const w = a.war, wc = el('div', 'card');
-      const score = el('div', 'war-score');
-      score.append(el('span', 'war-name', `[${a.tag}]`), el('b', w.mine >= w.theirs ? 'pos' : 'neg', t('war_score', w.mine, w.theirs)), el('span', 'war-name', `[${w.enemy.tag}]`));
-      const ends = el('div', 'sub center');
-      kit.addUpdater(() => { ends.textContent = `${t('war_vs', w.enemy.name)} · ${t('war_ends', fmtTime((w.endsAt - now()) / 1000))} · ${t('left_n', left.war)}`; });
-      wc.append(score, ends, el('p', 'sub center', t('war_d')));
-      kit.panel.append(wc);
-      const myPower = G.power(S());
-      for (const p of w.targets.slice(0, 6)) {
-        const x = row({ iconEl: planeOf(p), title: p.name });
-        x.sub.innerHTML = `${t('power')} <b class="${p.power > myPower * 1.05 ? 'neg' : p.power < myPower * 0.95 ? 'pos' : ''}">${fmt(p.power)}</b>`;
-        setBtn(x, t('attack'), '', left.war > 0, 'danger');
-        x.btn.onclick = async () => {
-          x.btn.disabled = true;
-          const r = await call('ally.war', { id: p.id });
-          if (r) { ally = r; showFight(r, [`<b class="pos">${t('points_n', r.points)}</b>`]); }
-          kit.render();
-        };
-        kit.panel.append(x.r);
-      }
-    }
+    kit.panel.append(heading(t('war')));
+    if (c.lastWar) kit.panel.append(el('p', 'hint', t(c.lastWar.won ? 'war_last_won' : 'war_last_lost', c.lastWar.mine, c.lastWar.theirs)));
+    if (!w) kit.panel.append(el('p', 'hint', clan.week.day === 6 ? t('war_pause', fmtTime((clan.week.endsAt - now()) / 1000)) : t('war_none')));
+    else warCard(w);
 
     kit.panel.append(heading(t('members')));
-    for (const p of a.members) {
+    for (const p of c.members) {
       const x = row({ iconEl: planeOf(p), title: p.name + (p.me ? ` (${t('you')})` : ''), noBtn: true });
-      x.sub.innerHTML = `${p.leader ? t('leader') + ' · ' : ''}${cost('trophy', p.rating)} · ${t('power')} ${fmt(p.power)}`;
+      x.sub.textContent = `${p.leader ? t('leader') + ' · ' : ''}${t('power')} ${fmt(p.power)}${w ? ' · ' + t('war_pts', fmt(p.points)) : ''}`;
       kit.panel.append(x.r);
     }
     const leave = el('button', 'btn ghost wide', t('leave'));
     leave.onclick = () => openModal({
       title: t('leave'), icon: 'alert', body: t('leave_confirm'),
-      buttons: [{ label: t('cancel'), kind: 'ghost' }, { label: t('confirm'), kind: 'danger', onClick: async () => { await call('ally.leave'); ally = null; allyList = null; kit.render(); } }],
+      buttons: [{ label: t('cancel'), kind: 'ghost' }, { label: t('confirm'), kind: 'danger', onClick: async () => { await call('clan.leave'); clan = null; clanList = null; kit.render(); } }],
     });
     kit.panel.append(leave);
   }
 
-  function allianceBrowser() {
+  function warCard(w) {
+    const wc = el('div', 'card war');
+    const score = w.days.reduce((acc, [a, b], d) => { if (a > b) acc[0] += w.values[d]; else if (b > a) acc[1] += w.values[d]; return acc; }, [0, 0]);
+    const top = el('div', 'war-score');
+    top.append(el('span', 'war-name', `[${clan.clan.tag}]`), el('b', score[0] >= score[1] ? 'pos' : 'neg', `${score[0]} : ${score[1]}`), el('span', 'war-name', `[${w.enemy.tag}]`));
+    const ends = el('div', 'sub center');
+    kit.addUpdater(() => { ends.textContent = `${t('war_vs', w.enemy.name, tierName(w.enemy.tier))} · ${t('war_ends', fmtTime((w.endsAt - now()) / 1000))}`; });
+    const days = el('div', 'war-days');
+    w.days.forEach(([a, b], d) => {
+      const col = el('div', 'war-day' + (d === w.day ? ' today' : d < w.day ? (a > b ? ' won' : b > a ? ' lost' : '') : ''));
+      col.append(el('b', '', t('wd_' + d)), el('span', 'war-val', `${w.values[d]} ${t('pt')}`), el('span', '', fmt(a)), el('span', 'sub', fmt(b)));
+      days.append(col);
+    });
+    wc.append(top, ends, days);
+    const today = el('div', 'war-today');
+    today.append(el('div', 'name', t('war_today', t('wd_' + w.day))));
+    for (const k of w.kinds[w.day]) today.append(html('div', 'sub', `${ic('check')} ${t('wk_' + k)}`));
+    const mine = el('div', 'sub');
+    kit.addUpdater(() => { mine.textContent = t('war_mine', fmt(w.myPoints)); });
+    today.append(mine);
+    wc.append(today);
+    kit.panel.append(wc);
+    if (w.day === 5) {
+      kit.panel.append(el('p', 'hint', t('war_sunday', w.tickets)));
+      const myPower = G.power(S());
+      for (const p of w.targets) {
+        const x = row({ iconEl: planeOf(p), title: p.name + (p.beaten ? ' ✓' : '') });
+        x.sub.innerHTML = `${t('power')} <b class="${p.power > myPower * 1.05 ? 'neg' : p.power < myPower * 0.95 ? 'pos' : ''}">${fmt(p.power)}</b>`;
+        setBtn(x, t('attack'), '', w.tickets > 0, 'danger');
+        x.btn.onclick = async () => {
+          x.btn.disabled = true;
+          const r = await call('war.fight', { id: p.id });
+          if (r) { clan = r; kit.fightModal({ me: o().name, foe: nameTag(r.opponent), win: r.win, myLeft: r.myLeft, foeLeft: r.oppLeft, lines: [`<b class="pos">+${fmt(r.points)}</b> ${t('points')}`] }); }
+          kit.render();
+        };
+        kit.panel.append(x.r);
+      }
+    }
+  }
+
+  function browser() {
     const card = el('div', 'card');
     const create = html('button', 'btn gem wide', `<span>${t('ally_create')}</span>${cost('gem', ALLIANCE_CREATE_GEMS)}`);
-    create.onclick = createAlliance;
+    create.onclick = createClan;
     card.append(el('p', 'sub', t('ally_none')), create);
     kit.panel.append(card);
     const tag = demoTag(); if (tag) kit.panel.append(tag);
-    for (const a of allyList) {
+    for (const a of clanList) {
       const x = row({ icon: 'shield', title: `[${a.tag}] ${a.name}` });
-      x.sub.textContent = `${t('level_n', a.level)} · ${t('members_n', a.members, a.max)} · ${t('power')} ${fmt(a.power)}`;
+      x.sub.textContent = `${t('tier_n_clan', tierName(a.tier), '')} · ${t('members_n', a.members, a.max)} · ${t('power')} ${fmt(a.power)}`.replace(' ()', '');
       setBtn(x, t('join'), '', a.members < a.max);
       x.btn.onclick = async () => {
-        const r = await call('ally.join', { id: a.id });
-        if (r) { ally = r; sfx.reward(); kit.app.save(); }
+        const r = await call('clan.join', { id: a.id });
+        if (r) { clan = r; sfx.reward(); kit.app.save(); }
         kit.render();
       };
       kit.panel.append(x.r);
     }
   }
-
-  function createAlliance() {
+  function createClan() {
     if (S().gems < ALLIANCE_CREATE_GEMS) { toast(t('not_enough_gems')); return; }
     const name = field('f-ally-name', t('ally_name'), 20), tag = field('f-ally-tag', t('ally_tag'), 4);
     const body = el('div', 'form'); body.append(name, tag);
@@ -324,19 +309,18 @@ export function createOnlineUI(kit) {
       title: t('ally_create'), icon: 'shield', body,
       buttons: [
         { label: t('cancel'), kind: 'ghost' },
-        {
-          label: t('confirm'), onClick: async () => {
-            const r = await call('ally.create', { name: name.value, tag: tag.value });
-            if (!r) return false;
-            S().gems -= ALLIANCE_CREATE_GEMS; ally = r; sfx.reward(); kit.app.save(); kit.render();
-          },
-        },
+        { label: t('confirm'), onClick: async () => {
+          const r = await call('clan.create', { name: name.value, tag: tag.value });
+          if (!r) return false;
+          S().gems -= ALLIANCE_CREATE_GEMS; clan = r; sfx.reward(); kit.app.save(); kit.render();
+        } },
       ],
     });
   }
 
   // ---------- chat ----------
   function openChat(channel = 'global') {
+    if (!G.unlocked(S(), 'chat')) { toast(t('unlock_at', G.stageName(G.unlockStage('chat')))); return; }
     if (!o().token) { askName(); return; }
     let last = 0, timer = null, alive = true;
     const body = el('div', 'chat');
@@ -355,7 +339,7 @@ export function createOnlineUI(kit) {
 
     function add(m) {
       const line = el('div', 'msg' + (m.me ? ' mine' : ''));
-      const head = el('div', 'msg-head', nameTag(m));
+      const head = el('div', 'msg-head', m.tag ? `[${m.tag}] ${m.name}` : m.name);
       const time = new Date(m.ts);
       head.append(el('span', 'msg-time', `${String(time.getHours()).padStart(2, '0')}:${String(time.getMinutes()).padStart(2, '0')}`));
       line.append(head, el('div', 'msg-text', m.text));
@@ -368,7 +352,7 @@ export function createOnlineUI(kit) {
     }
     async function poll() {
       const ch = channel;
-      const r = await call('chat.get', { channel: ch, after: last }, { quiet: ch === 'global' });
+      const r = await call('chat.get', { channel: ch, after: last }, { quiet: true });
       if (!alive || ch !== channel) return;
       if (!r) { if (!list.children.length) list.append(el('p', 'hint center', ch === 'alliance' ? t('err_no_alliance') : t('err_offline'))); return; }
       if (!last) list.replaceChildren();
@@ -385,14 +369,11 @@ export function createOnlineUI(kit) {
       const r = await call('chat.send', { channel, text });
       if (r) { input.value = ''; await poll(); list.scrollTop = list.scrollHeight; }
     };
-    openModal({
-      title: t('chat'), body, cls: 'tall', buttons: [{ label: t('close'), kind: 'ghost' }],
-      onClose: () => { alive = false; clearInterval(timer); },
-    });
+    openModal({ title: t('chat'), body, cls: 'tall', buttons: [{ label: t('close'), kind: 'ghost' }], onClose: () => { alive = false; clearInterval(timer); } });
     poll().then(() => { list.scrollTop = list.scrollHeight; });
     timer = setInterval(poll, CHAT_POLL_MS);
   }
 
-  if (o().token) sync(true);
-  return { tabArena, tabAlliance, openChat, enter, heartbeat };
+  if (o().token) { sync(true); call('league.get', {}, { quiet: true }).then((r) => { if (r) lg = r; }); }
+  return { tabArena, tabAlliance, openChat, enter, heartbeat, sideInfo };
 }

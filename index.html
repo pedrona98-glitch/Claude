@@ -9,9 +9,9 @@
 <body>
   <div id="app">
     <header id="hud">
+      <button id="profile" aria-label="Profilo"><i data-ic="plane"></i><span><b id="p-name"></b><span id="power"></span></span></button>
       <div class="cur" title="Monete"><i data-ic="coin"></i><b id="coins">0</b></div>
       <div class="cur" title="Gemme"><i data-ic="gem"></i><b id="gems">0</b></div>
-      <button class="cur" id="cur-wrench" title="Chiavi inglesi"><i data-ic="wrench"></i><b id="wrenches">0</b></button>
       <button id="btn-chat" class="round" aria-label="Chat" data-ic="chat"></button>
       <button id="btn-settings" class="round" aria-label="Impostazioni" data-ic="gear"></button>
     </header>
@@ -19,16 +19,22 @@
     <section id="battle">
       <canvas id="sky"></canvas>
       <div id="stagebar">
-        <div class="stage-line"><b id="stage-name"></b><span id="stage-info"></span></div>
+        <div class="stage-line"><b id="stage-name"></b><span id="waves"></span><span id="stage-info"></span></div>
         <div id="hp" class="meter"><div id="hp-fill"></div><span id="hp-text"></span></div>
+      </div>
+      <div class="flank flank-l">
+        <button id="btn-pass" class="side-btn" hidden><i data-ic="star"></i><span></span><em class="dot"></em></button>
+        <button id="btn-arena" class="side-btn" hidden><i data-ic="swords"></i><span></span><em class="dot"></em></button>
+      </div>
+      <div class="flank flank-r">
+        <button id="btn-war" class="side-btn" hidden><i data-ic="shield"></i><span></span><em class="dot"></em></button>
       </div>
       <div id="banner"></div>
       <div id="tap-hint"></div>
       <button id="btn-boss" hidden></button>
       <div id="footbar">
         <div id="squad-hp"><i data-ic="heart"></i><div class="meter good"><div class="meter-fill" id="sq-fill"></div><span id="sq-text"></span></div></div>
-        <div id="dps"></div>
-        <button id="boost-chip" hidden><i data-ic="flame"></i><span id="boost-text"></span></button>
+        <div id="skills"></div>
       </div>
     </section>
 

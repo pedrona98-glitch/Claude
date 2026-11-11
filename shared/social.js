@@ -1,21 +1,15 @@
-// Regole del gioco online: account, server, arena PvP, alleanze, guerre e chat.
+// Regole del gioco online: account, server, lega PvP settimanale, alleanze, guerra settimanale e chat.
 // È JavaScript puro su un oggetto dati in memoria, così lo stesso codice gira
 // sul server vero (server/index.js) e nella demo dentro il browser (src/online.js).
 
 export const RULES = {
   serverOpenDays: 7,      // un server accetta nuove iscrizioni per questi giorni...
   serverCap: 3000,        // ...o fino a questo numero di giocatori
-  ticketsMax: 5,
-  ticketMinutes: 30,
-  refillsPerDay: 3,
-  allianceMax: 20,
-  allianceLevelMax: 50,
-  donationsPerDay: 3,
-  donationXp: 20,
-  bossAttacksPerDay: 3,
-  bossBurstSeconds: 30,
-  warAttacksPerDay: 3,
-  warWinGems: 10,
+  leagueSize: 100,
+  arenaTickets: 5,
+  clanMax: 50,
+  rejoinHours: 24,
+  warTickets: 5,
   chatKeep: 200,
   chatMinGapMs: 2000,
   chatMaxLen: 200,
@@ -29,11 +23,80 @@ const fail = (code) => { throw new ApiError(code); };
 
 const DAY = 86400e3;
 export const dayOf = (now) => Math.floor(now / DAY);
+/** Settimana di gioco: parte il martedì (UTC). Giorni 0-5 attivi (mar-dom), 6 = lunedì di pausa. */
+export const weekOf = (now) => Math.floor((dayOf(now) - 5) / 7);
+export const weekDay = (now) => (((dayOf(now) - 5) % 7) + 7) % 7;
+export const weekEnd = (now) => ((weekOf(now) + 1) * 7 + 5) * DAY;
+export const activeEnd = (now) => (weekOf(now) * 7 + 5 + 6) * DAY;
+
+// ---------- lega ----------
+export const LEAGUE_IDS = ['unranked', 'bronze', 'silver', 'gold', 'platinum', 'diamond'];
+const LEAGUE_MOVE = [[90, 101], [80, 101], [50, 90], [20, 80], [10, 70], [0, 36]]; // [promossi fino a, retrocessi da]
+const BRACKETS = [1, 2, 3, 5, 10, 20, 50, 100];
+// Per lega e fascia di classifica: [chiavi inglesi, monete, piani, casse, progetti, vernice].
+const LEAGUE_REWARDS = [
+  [[175, 9e3, 210, 1, 180, 0], [140, 7e3, 170, 0, 140, 0], [110, 5600, 140, 0, 0, 0], [90, 4500, 100, 0, 0, 0], [70, 3500, 0, 0, 0, 0], [50, 2800, 0, 0, 0, 0], [40, 2290, 0, 0, 0, 0], [30, 1800, 0, 0, 0, 0]],
+  [[350, 17500, 420, 2, 350, 70], [280, 14e3, 330, 1, 280, 20], [220, 11200, 270, 1, 220, 0], [180, 9e3, 210, 1, 180, 0], [140, 7100, 170, 1, 140, 0], [110, 5700, 130, 0, 110, 0], [90, 4500, 110, 0, 90, 0], [70, 3600, 90, 0, 70, 0]],
+  [[700, 35e3, 840, 3, 700, 280], [550, 28e3, 672, 2, 560, 230], [450, 22400, 538, 2, 448, 180], [350, 17900, 430, 1, 358, 150], [290, 14300, 344, 1, 287, 0], [230, 11400, 275, 1, 229, 0], [190, 9170, 220, 1, 184, 0], [150, 7340, 176, 1, 147, 0]],
+  [[1220, 61200, 1470, 5, 1220, 490], [980, 49e3, 1170, 4, 980, 392], [784, 39200, 941, 3, 784, 314], [627, 31300, 753, 2, 627, 251], [502, 25e3, 602, 2, 502, 201], [401, 20e3, 482, 2, 401, 161], [321, 16e3, 385, 1, 321, 128], [257, 12800, 308, 1, 257, 0]],
+  [[1750, 87500, 2100, 7, 1750, 700], [1400, 70e3, 1680, 6, 1400, 560], [1120, 56e3, 1340, 4, 1120, 448], [896, 44800, 1070, 4, 896, 358], [717, 35800, 860, 3, 717, 287], [573, 28600, 688, 2, 573, 229], [459, 22900, 551, 2, 459, 184], [367, 18300, 440, 1, 367, 147]],
+  [[2620, 131e3, 3150, 11, 2620, 1050], [2100, 105e3, 2520, 8, 2100, 840], [1680, 84e3, 2010, 7, 1680, 672], [1340, 67200, 1610, 5, 1340, 538], [1070, 53700, 1290, 4, 1070, 430], [860, 43e3, 1030, 3, 860, 344], [688, 34400, 826, 3, 688, 275], [551, 27500, 661, 2, 551, 220]],
+];
+const PLAN_SCALE = 1 / 40, CRATE_SCALE = 0.5;
+function pack(row, crateRarity) {
+  const [wrenches, coins, plans, crates, blueprints, paint] = row;
+  const n = Math.round(crates * CRATE_SCALE);
+  return { wrenches, coins, plans: Math.round(plans * PLAN_SCALE), blueprints, paint, crates: Array(n).fill(crateRarity) };
+}
+export function leagueReward(tier, rank) {
+  const b = BRACKETS.findIndex((x) => rank <= x);
+  return b < 0 ? null : pack(LEAGUE_REWARDS[tier][b], Math.min(3, 1 + Math.floor(tier / 2)));
+}
+
+// ---------- guerra ----------
+export const WAR_DAY_VALUE = [1, 2, 3, 4, 5, 2];
+export const WAR_DAYS = [
+  ['forge', 'tech', 'skillUp'],
+  ['forgeCoins', 'forgeUp', 'dungeonKey', 'hatch', 'merge'],
+  ['forge', 'skillUp', 'emblem'],
+  ['forgeCoins', 'forgeUp', 'tech', 'hatch', 'merge'],
+  ['forge', 'dungeonKey', 'emblem'],
+  ['fight'],
+];
+const AGE_POINTS = [1, 1, 1, 2, 2, 2, 2, 3, 3, 3];
+const POINTS = {
+  forge: (a) => AGE_POINTS[a] || 0,
+  tech: (t) => [300, 7500, 20000, 35000, 62000][t] || 0,
+  skillUp: (r) => [50, 75, 100, 125, 150, 175][r] || 0,
+  forgeCoins: () => 10,
+  forgeUp: () => 10000,
+  dungeonKey: () => 1000,
+  hatch: (r) => [250, 1000, 2500, 5000, 10000, 16000][r] || 0,
+  merge: (r) => [50, 200, 500, 1000, 2000, 3200][r] || 0,
+  emblem: (r) => [400, 600, 900, 1350, 2000, 3000][r] || 0,
+};
+/** Punti di una voce del registro azioni nel giorno di guerra `day`. */
+export function warPoints(key, count, day) {
+  const [kind, arg] = String(key).split(':');
+  if (!WAR_DAYS[day] || !WAR_DAYS[day].includes(kind) || !POINTS[kind]) return 0;
+  const n = Math.min(1e6, Math.max(0, Math.floor(Number(count) || 0)));
+  return POINTS[kind](Number(arg) || 0) * n;
+}
+export const CLAN_TIERS = [['S', 25], ['A', 20], ['B', 15], ['C', 10]];
+export const clanTier = (tp) => CLAN_TIERS.findIndex(([, min]) => tp >= min);
+// Per fascia S/A/B/C: [vittoria, sconfitta] con le stesse colonne della lega.
+const WAR_REWARDS = [
+  [[8400, 280e3, 5600, 22, 4200, 2290], [4200, 140e3, 2800, 11, 2100, 1120]],
+  [[5900, 196e3, 4000, 16, 3000, 1550], [3000, 98e3, 2000, 8, 1500, 780]],
+  [[4000, 140e3, 2800, 11, 2000, 1000], [2000, 70e3, 1400, 5, 1000, 550]],
+  [[2900, 96e3, 1900, 8, 1500, 750], null],
+];
+
 const BAD_WORDS = ['cazzo', 'merda', 'stronz', 'vaffanculo', 'puttana', 'troia', 'fuck', 'shit', 'bitch', 'asshole', 'cunt', 'nigger', 'faggot'];
 const BOT_NAMES = ['Recluta Alfa', 'Recluta Bravo', 'Recluta Charlie', 'Recluta Delta', 'Recluta Echo', 'Recluta Foxtrot'];
 
 export function emptyData() {
-  return { seq: 1, servers: [], users: {}, tokens: {}, alliances: {}, chat: {}, wars: {} };
+  return { seq: 1, servers: [], users: {}, tokens: {}, clans: {}, chat: {}, groups: {}, wars: {} };
 }
 
 export function cleanName(raw, min = 3, max = 16) {
@@ -49,8 +112,7 @@ export function cleanText(raw) {
   return text;
 }
 const num = (v) => (Number.isFinite(v) && v > 0 ? v : 0);
-export const powerOf = (u) => Math.sqrt(num(u.dps) * num(u.hp));
-export const xpNext = (level) => Math.round(100 * Math.pow(level, 1.5));
+export const powerOf = (u) => Math.round(Math.sqrt(num(u.dps) * num(u.hp)) * 10);
 
 /** Duello: vince chi abbatte l'altro per primo. Conta dps × vita, con un po' di fortuna. */
 export function duel(a, b, rnd = Math.random) {
@@ -59,15 +121,18 @@ export function duel(a, b, rnd = Math.random) {
   const win = ta <= tb;
   return { win, myLeft: win ? Math.max(0, 1 - ta / tb) : 0, oppLeft: win ? 0 : Math.max(0, 1 - tb / ta) };
 }
-function elo(mine, theirs, win) {
-  const expected = 1 / (1 + Math.pow(10, (theirs - mine) / 400));
-  const d = Math.round(32 * ((win ? 1 : 0) - expected));
-  return win ? Math.max(5, d) : Math.min(-3, d);
+function addPack(u, p) {
+  if (!p) return;
+  const t = u.pack || (u.pack = {});
+  for (const [k, v] of Object.entries(p)) {
+    if (k === 'crates') { if (v.length) t.crates = (t.crates || []).concat(v); } else if (v) t[k] = (t[k] || 0) + v;
+  }
 }
 
 export function createWorld(data = emptyData(), { rnd = Math.random, rules = {} } = {}) {
   const R = { ...RULES, ...rules };
   const id = (prefix) => prefix + (data.seq++).toString(36);
+  for (const k of ['clans', 'groups', 'wars', 'chat']) data[k] = data[k] || {};
 
   // ---------- account e server ----------
   function pickServer(now) {
@@ -82,10 +147,9 @@ export function createWorld(data = emptyData(), { rnd = Math.random, rules = {} 
     const srv = pickServer(now);
     const user = {
       id: id('u'), name: cleanName(name), server: srv.id, createdAt: now,
-      dps: 0, hp: 0, stage: 1, plane: 'libellula',
-      rating: 1000, tickets: R.ticketsMax, ticketAt: now, wins: 0,
-      alliance: null, pending: 0, day: dayOf(now), donations: 0, bossAttacks: 0, warAttacks: 0, refills: 0,
-      offer: [], lastChat: 0,
+      dps: 0, hp: 0, stage: 1, plane: 'biplane',
+      lg: 0, lgWeek: weekOf(now), tix: R.arenaTickets, tixDay: dayOf(now), wins: 0, offer: [],
+      clan: null, leftAt: 0, warTix: R.warTickets, warWeek: weekOf(now), lastChat: 0, pack: null,
     };
     srv.count++;
     data.users[user.id] = user;
@@ -94,29 +158,25 @@ export function createWorld(data = emptyData(), { rnd = Math.random, rules = {} 
     return { token, ...me(user, now) };
   }
 
+  /** Aggiornamenti giornalieri e cambio di stagione, la prima volta che il giocatore si fa vivo. */
   function touch(u, now) {
-    if (u.day !== dayOf(now)) { u.day = dayOf(now); u.donations = 0; u.bossAttacks = 0; u.warAttacks = 0; u.refills = 0; }
-    const step = R.ticketMinutes * 60e3;
-    if (u.tickets >= R.ticketsMax) u.ticketAt = now;
-    else {
-      const gained = Math.floor((now - u.ticketAt) / step);
-      if (gained > 0) { u.tickets = Math.min(R.ticketsMax, u.tickets + gained); u.ticketAt = u.tickets >= R.ticketsMax ? now : u.ticketAt + gained * step; }
-    }
+    if (u.tixDay !== dayOf(now)) { u.tixDay = dayOf(now); u.tix = R.arenaTickets; }
+    const week = weekOf(now);
+    if (u.lgWeek !== week) settleLeague(u, week);
+    if (u.warWeek !== week) { u.warWeek = week; u.warTix = R.warTickets; }
+    if (u.clan) settleWar(u.server, now);
   }
 
-  const tagOf = (u) => (u.alliance && data.alliances[u.alliance] ? data.alliances[u.alliance].tag : '');
-  const pub = (u) => ({ id: u.id, name: u.name, tag: tagOf(u), rating: u.rating, stage: u.stage, plane: u.plane, power: powerOf(u), bot: !!u.bot });
+  const clanOf = (u) => (u.clan && data.clans[u.clan]) || null;
+  const tagOf = (u) => clanOf(u)?.tag || '';
+  const pub = (u) => ({ id: u.id, name: u.name, tag: tagOf(u), stage: u.stage, plane: u.plane, power: powerOf(u), bot: !!u.bot });
 
   function me(u, now) {
     touch(u, now);
-    const a = u.alliance ? data.alliances[u.alliance] : null;
+    const c = clanOf(u);
     return {
-      user: {
-        id: u.id, name: u.name, server: u.server, rating: u.rating, wins: u.wins,
-        tickets: u.tickets, ticketsMax: R.ticketsMax, nextTicketAt: u.tickets < R.ticketsMax ? u.ticketAt + R.ticketMinutes * 60e3 : 0,
-        refillsLeft: R.refillsPerDay - u.refills, pending: u.pending,
-      },
-      alliance: a ? { id: a.id, name: a.name, tag: a.tag, level: a.level } : null,
+      user: { id: u.id, name: u.name, server: u.server, league: u.lg, tickets: u.tix, ticketsMax: R.arenaTickets, hasPack: !!u.pack },
+      clan: c ? { id: c.id, name: c.name, tag: c.tag, tier: clanTier(c.tp) } : null,
     };
   }
 
@@ -128,229 +188,225 @@ export function createWorld(data = emptyData(), { rnd = Math.random, rules = {} 
     return me(u, now);
   }
 
-  // ---------- arena ----------
-  const serverUsers = (srv) => Object.values(data.users).filter((x) => x.server === srv);
+  function claim(u, _p, now) {
+    const p = u.pack || {}; u.pack = null;
+    return { reward: p, ...me(u, now) };
+  }
 
-  function arenaList(u, now) {
+  // ---------- lega ----------
+  const groupKey = (week, server, tier, n) => `${week}:${server}:${tier}:${n}`;
+  function groupOf(u, week) {
+    if (u.group && u.group.startsWith(week + ':')) return data.groups[u.group];
+    for (let n = 0; ; n++) {
+      const key = groupKey(week, u.server, u.lg, n);
+      const g = data.groups[key] || (data.groups[key] = { ids: [], lp: {} });
+      if (g.ids.length < R.leagueSize) { g.ids.push(u.id); g.lp[u.id] = 0; u.group = key; return g; }
+    }
+  }
+  const standings = (g) => g.ids.slice().sort((a, b) => (g.lp[b] || 0) - (g.lp[a] || 0));
+  function settleLeague(u, week) {
+    const old = u.group && data.groups[u.group];
+    if (old && Number(u.group.split(':')[0]) < week) {
+      const rank = standings(old).indexOf(u.id) + 1, [up, down] = LEAGUE_MOVE[u.lg];
+      if ((old.lp[u.id] || 0) > 0) addPack(u, leagueReward(u.lg, rank));
+      u.lastSeason = { league: u.lg, rank, points: old.lp[u.id] || 0 };
+      if (rank <= up && u.lg < LEAGUE_IDS.length - 1) u.lg++;
+      else if (rank >= down && u.lg > 0) u.lg--;
+    }
+    u.lgWeek = week; u.group = null;
+  }
+
+  function leagueGet(u, _p, now) {
     touch(u, now);
-    const pool = serverUsers(u.server).filter((x) => x.id !== u.id && x.dps > 0 && x.hp > 0)
-      .sort((a, b) => Math.abs(a.rating - u.rating) - Math.abs(b.rating - u.rating)).slice(0, 8);
+    const g = groupOf(u, weekOf(now)), order = standings(g);
+    const closed = weekDay(now) === 6;
+    const near = order.filter((x) => x !== u.id && data.users[x] && data.users[x].dps > 0)
+      .sort((a, b) => Math.abs((g.lp[a] || 0) - (g.lp[u.id] || 0)) - Math.abs((g.lp[b] || 0) - (g.lp[u.id] || 0))).slice(0, 8);
     const picks = [];
-    while (picks.length < 3 && pool.length) picks.push(pool.splice(Math.floor(rnd() * pool.length), 1)[0]);
-    u.offer = picks.map((x) => ({ ...pub(x), dps: x.dps, hp: x.hp }));
-    // Pochi giocatori sul server: si completa con avversari d'addestramento, dichiarati come tali.
+    while (picks.length < 3 && near.length) picks.push(data.users[near.splice(Math.floor(rnd() * near.length), 1)[0]]);
+    u.offer = picks.map((x) => ({ ...pub(x), dps: x.dps, hp: x.hp, points: g.lp[x.id] || 0 }));
+    // Pochi piloti nel girone: si completa con avversari d'addestramento, dichiarati come tali.
     for (let i = 0; u.offer.length < 3; i++) {
       const k = 0.75 + 0.2 * i + 0.1 * rnd();
-      u.offer.push({
-        id: 'bot' + i, name: BOT_NAMES[Math.floor(rnd() * BOT_NAMES.length)], tag: '', bot: true,
-        rating: Math.max(0, Math.round(u.rating - 40 + 40 * i)), stage: u.stage, plane: 'rondine',
-        dps: num(u.dps) * k || 1, hp: num(u.hp) * k || 1, power: powerOf(u) * k,
-      });
+      u.offer.push({ id: 'bot' + i, name: BOT_NAMES[Math.floor(rnd() * BOT_NAMES.length)], tag: '', bot: true, stage: u.stage, plane: 'mono',
+        dps: num(u.dps) * k || 1, hp: num(u.hp) * k || 1, power: Math.round(powerOf(u) * k), points: g.lp[u.id] || 0 });
     }
-    const rank = 1 + serverUsers(u.server).filter((x) => x.rating > u.rating).length;
-    return { opponents: u.offer.map(({ dps, hp, ...rest }) => rest), rank, ...me(u, now) };
+    return {
+      ...me(u, now),
+      week: { day: weekDay(now), closed, endsAt: closed ? weekEnd(now) : activeEnd(now) },
+      league: u.lg, points: g.lp[u.id] || 0, rank: order.indexOf(u.id) + 1, size: order.length,
+      move: LEAGUE_MOVE[u.lg], lastSeason: u.lastSeason || null,
+      table: order.slice(0, 100).map((x, i) => ({ rank: i + 1, ...pub(data.users[x]), points: g.lp[x] || 0, me: x === u.id })),
+      opponents: closed ? [] : u.offer.map(({ dps, hp, ...rest }) => rest),
+    };
   }
 
-  function arenaFight(u, { id: oppId }, now) {
+  function leagueFight(u, { id: oppId }, now) {
     touch(u, now);
+    if (weekDay(now) === 6) fail('season_closed');
     if (!(u.dps > 0 && u.hp > 0)) fail('no_snapshot');
     const opp = u.offer.find((x) => x.id === oppId) || fail('not_found');
-    if (u.tickets <= 0) fail('no_tickets');
-    if (u.tickets === R.ticketsMax) u.ticketAt = now;
-    u.tickets--;
-    const res = duel(u, opp, rnd);
-    const delta = elo(u.rating, opp.rating, res.win);
-    u.rating = Math.max(0, u.rating + delta);
+    if (u.tix <= 0) fail('no_tickets');
+    u.tix--;
+    const g = groupOf(u, weekOf(now)), res = duel(u, opp, rnd);
+    const ratio = powerOf(opp) / Math.max(1, powerOf(u));
+    const gain = res.win ? Math.round(15 + Math.max(-5, Math.min(10, (ratio - 1) * 20))) : 2;
+    g.lp[u.id] = (g.lp[u.id] || 0) + gain;
     if (res.win) u.wins++;
-    const real = data.users[opp.id];
-    if (real) real.rating = Math.max(0, real.rating - Math.round(delta / 2));
     u.offer = [];
-    return { ...res, delta, opponent: { name: opp.name, tag: opp.tag, plane: opp.plane }, reward: { gems: res.win ? 1 : 0, coinSeconds: res.win ? 300 : 60 }, ...me(u, now) };
-  }
-
-  function arenaRefill(u, _p, now) {
-    touch(u, now);
-    if (u.refills >= R.refillsPerDay) fail('limit');
-    u.refills++; u.tickets = R.ticketsMax; u.ticketAt = now;
-    return me(u, now);
-  }
-
-  function arenaTop(u) {
-    const all = serverUsers(u.server).sort((a, b) => b.rating - a.rating);
-    return { top: all.slice(0, 50).map((x, i) => ({ rank: i + 1, ...pub(x), me: x.id === u.id })), rank: 1 + all.indexOf(u), server: u.server };
+    return { ...res, points: gain, opponent: { name: opp.name, tag: opp.tag, plane: opp.plane }, ...me(u, now) };
   }
 
   // ---------- alleanze ----------
-  const members = (a) => a.members.map((mid) => data.users[mid]).filter(Boolean);
-  const alliancePower = (a) => members(a).reduce((s, x) => s + powerOf(x), 0);
-  const myAlliance = (u) => (u.alliance && data.alliances[u.alliance]) || fail('no_alliance');
+  const members = (c) => c.members.map((mid) => data.users[mid]).filter(Boolean);
+  const clanPower = (c) => members(c).reduce((s, x) => s + powerOf(x), 0);
+  const myClan = (u) => clanOf(u) || fail('no_alliance');
 
-  function spawnBoss(a, level) {
-    const total = members(a).reduce((s, x) => s + x.dps, 0);
-    const maxHp = Math.max(1000, total * R.bossBurstSeconds * R.bossAttacksPerDay * 0.6);
-    a.boss = { level, hp: maxHp, maxHp, hitters: [] };
-  }
-  function addXp(a, xp) {
-    a.xp += xp;
-    while (a.level < R.allianceLevelMax && a.xp >= xpNext(a.level)) { a.xp -= xpNext(a.level); a.level++; }
-  }
-
-  function allyList(u, { q = '' } = {}) {
+  function clanList(u, { q = '' } = {}) {
     const needle = String(q).toLowerCase().slice(0, 20);
-    const list = Object.values(data.alliances).filter((a) => a.server === u.server && (!needle || a.name.toLowerCase().includes(needle) || a.tag.toLowerCase().includes(needle)))
-      .map((a) => ({ id: a.id, name: a.name, tag: a.tag, level: a.level, members: a.members.length, max: R.allianceMax, power: alliancePower(a) }))
+    const list = Object.values(data.clans).filter((c) => c.server === u.server && (!needle || c.name.toLowerCase().includes(needle) || c.tag.toLowerCase().includes(needle)))
+      .map((c) => ({ id: c.id, name: c.name, tag: c.tag, tier: clanTier(c.tp), members: c.members.length, max: R.clanMax, power: clanPower(c) }))
       .sort((a, b) => b.power - a.power).slice(0, 30);
     return { alliances: list };
   }
-
-  function allyCreate(u, { name, tag }, now) {
-    if (u.alliance) fail('in_alliance');
-    const a = {
-      id: id('a'), server: u.server, name: cleanName(name, 3, 20), tag: cleanName(tag, 2, 4).toUpperCase().replace(/[^A-Z0-9]/g, '') || fail('bad_name'),
-      leader: u.id, members: [u.id], level: 1, xp: 0, createdAt: now, boss: null, donated: {},
+  function canJoin(u, now) {
+    if (u.clan) fail('in_alliance');
+    if (now - u.leftAt < R.rejoinHours * 3600e3) fail('rejoin_wait');
+  }
+  function clanCreate(u, { name, tag }, now) {
+    canJoin(u, now);
+    const c = {
+      id: id('c'), server: u.server, name: cleanName(name, 3, 20), tag: cleanName(tag, 2, 4).toUpperCase().replace(/[^A-Z0-9]/g, '') || fail('bad_name'),
+      leader: u.id, members: [u.id], tp: 10, createdAt: now, lastWar: null,
     };
-    if (Object.values(data.alliances).some((x) => x.server === u.server && (x.name.toLowerCase() === a.name.toLowerCase() || x.tag === a.tag))) fail('name_taken');
-    data.alliances[a.id] = a; u.alliance = a.id;
-    spawnBoss(a, 1);
-    return allyGet(u, {}, now);
+    if (Object.values(data.clans).some((x) => x.server === u.server && (x.name.toLowerCase() === c.name.toLowerCase() || x.tag === c.tag))) fail('name_taken');
+    data.clans[c.id] = c; u.clan = c.id;
+    return clanGet(u, {}, now);
   }
-
-  function allyJoin(u, { id: aid }, now) {
-    if (u.alliance) fail('in_alliance');
-    const a = data.alliances[aid];
-    if (!a || a.server !== u.server) fail('not_found');
-    if (a.members.length >= R.allianceMax) fail('full');
-    a.members.push(u.id); u.alliance = a.id;
-    return allyGet(u, {}, now);
+  function clanJoin(u, { id: cid }, now) {
+    canJoin(u, now);
+    const c = data.clans[cid];
+    if (!c || c.server !== u.server) fail('not_found');
+    if (c.members.length >= R.clanMax) fail('full');
+    c.members.push(u.id); u.clan = c.id;
+    return clanGet(u, {}, now);
   }
-
-  function allyLeave(u, _p, now) {
-    const a = myAlliance(u);
-    a.members = a.members.filter((x) => x !== u.id);
-    u.alliance = null;
-    if (!a.members.length) { delete data.alliances[a.id]; delete data.chat['a:' + a.id]; }
-    else if (a.leader === u.id) a.leader = a.members[0];
+  function clanLeave(u, _p, now) {
+    const c = myClan(u);
+    c.members = c.members.filter((x) => x !== u.id);
+    u.clan = null; u.leftAt = now;
+    const w = warOf(c, now); if (w) delete w.pair.contrib[u.id]; // lasciando a metà guerra si perdono i premi personali
+    if (!c.members.length) { delete data.clans[c.id]; delete data.chat['a:' + c.id]; }
+    else if (c.leader === u.id) c.leader = c.members[0];
     return me(u, now);
   }
 
-  // Guerre: ogni giorno le alleanze di un server vengono accoppiate per forza simile.
+  // Guerra: ogni martedì le alleanze di un server vengono accoppiate per fascia e forza.
   function ensureWar(server, now) {
-    const today = dayOf(now);
-    let w = data.wars[server];
-    if (w && w.day === today) return w;
-    if (w) {
-      for (const p of w.pairs) {
-        const winner = p.pa === p.pb ? null : p.pa > p.pb ? p.a : p.b;
-        for (const side of [p.a, p.b]) {
-          const a = data.alliances[side];
-          if (!a) continue;
-          const won = side === winner;
-          if (won) addXp(a, 100);
-          a.lastWar = { day: w.day, won, mine: side === p.a ? p.pa : p.pb, theirs: side === p.a ? p.pb : p.pa };
-          if (won) for (const mid of p.hitters) { const m = data.users[mid]; if (m && m.alliance === side) m.pending += R.warWinGems; }
-        }
-      }
+    const week = weekOf(now), key = `${week}:${server}`;
+    let w = data.wars[key];
+    if (!w) {
+      const list = Object.values(data.clans).filter((c) => c.server === server && c.members.length)
+        .sort((a, b) => b.tp - a.tp || clanPower(b) - clanPower(a));
+      w = data.wars[key] = { week, server, pairs: [], settled: false };
+      for (let i = 0; i + 1 < list.length; i += 2) w.pairs.push(newPair(list[i].id, list[i + 1].id));
     }
-    const list = Object.values(data.alliances).filter((a) => a.server === server && a.members.length).sort((a, b) => alliancePower(b) - alliancePower(a));
-    w = data.wars[server] = { day: today, pairs: [] };
-    for (let i = 0; i + 1 < list.length; i += 2) w.pairs.push({ a: list[i].id, b: list[i + 1].id, pa: 0, pb: 0, hitters: [] });
     return w;
   }
-  function warOf(u, now) {
-    const w = ensureWar(u.server, now);
-    const inPair = (aid) => w.pairs.some((p) => p.a === aid || p.b === aid);
-    let pair = w.pairs.find((p) => p.a === u.alliance || p.b === u.alliance);
+  const newPair = (a, b) => ({ a, b, days: WAR_DAY_VALUE.map(() => [0, 0]), contrib: {}, beaten: {}, brawl: [false, false] });
+  function warOf(c, now) {
+    if (weekDay(now) === 6) return null;
+    const w = ensureWar(c.server, now), inPair = (cid) => w.pairs.some((p) => p.a === cid || p.b === cid);
+    let pair = w.pairs.find((p) => p.a === c.id || p.b === c.id);
     if (!pair) {
-      // Alleanza nata oggi o rimasta spaiata: si abbina alla prima altra alleanza libera.
-      const free = Object.values(data.alliances).find((a) => a.server === u.server && a.id !== u.alliance && a.members.length && !inPair(a.id));
+      // Alleanza nata a guerra iniziata o rimasta spaiata: si abbina alla prima alleanza libera.
+      const free = Object.values(data.clans).find((x) => x.server === c.server && x.id !== c.id && x.members.length && !inPair(x.id));
       if (!free) return null;
-      pair = { a: u.alliance, b: free.id, pa: 0, pb: 0, hitters: [] };
-      w.pairs.push(pair);
+      pair = newPair(c.id, free.id); w.pairs.push(pair);
     }
-    const mineIsA = pair.a === u.alliance;
-    return { pair, mineIsA, enemy: data.alliances[mineIsA ? pair.b : pair.a] };
+    const side = pair.a === c.id ? 0 : 1;
+    return { w, pair, side, enemy: data.clans[side ? pair.a : pair.b] };
+  }
+  function settleWar(server, now) {
+    for (const w of Object.values(data.wars)) {
+      if (w.server !== server || w.settled || (w.week === weekOf(now) && weekDay(now) < 6)) continue;
+      w.settled = true;
+      for (const p of w.pairs) {
+        const score = [0, 0];
+        p.days.forEach(([x, y], d) => { if (x > y) score[0] += WAR_DAY_VALUE[d]; else if (y > x) score[1] += WAR_DAY_VALUE[d]; });
+        [p.a, p.b].forEach((cid, side) => {
+          const c = data.clans[cid];
+          if (!c) return;
+          const won = score[side] > score[1 - side], tier = clanTier(c.tp);
+          const row = tier >= 0 ? WAR_REWARDS[tier][won ? 0 : 1] : null;
+          for (const [uid, pts] of Object.entries(p.contrib)) {
+            const m = data.users[uid];
+            if (m && m.clan === cid && pts > 0 && row) addPack(m, pack(row, Math.max(1, 3 - tier)));
+          }
+          c.tp = Math.max(0, c.tp + (won ? 5 : tier >= 0 && tier <= 2 ? -5 : 0));
+          c.lastWar = { week: w.week, won, mine: score[side], theirs: score[1 - side], tier };
+        });
+      }
+    }
   }
 
-  function allyGet(u, _p, now) {
+  function clanGet(u, _p, now) {
     touch(u, now);
-    const a = myAlliance(u);
-    if (!a.boss) spawnBoss(a, 1);
-    const war = warOf(u, now);
+    const c = myClan(u), war = warOf(c, now), day = weekDay(now);
+    const contrib = war ? war.pair.contrib : {};
     return {
       ...me(u, now),
-      alliance: {
-        id: a.id, name: a.name, tag: a.tag, level: a.level, xp: a.xp, xpNext: xpNext(a.level), leader: a.leader,
-        members: members(a).map((x) => ({ ...pub(x), donated: a.donated[x.id] || 0, leader: x.id === a.leader, me: x.id === u.id }))
-          .sort((x, y) => y.power - x.power),
-        max: R.allianceMax,
-        boss: { level: a.boss.level, hp: a.boss.hp, maxHp: a.boss.maxHp },
-        lastWar: a.lastWar || null,
-        war: war && war.enemy ? {
-          enemy: { name: war.enemy.name, tag: war.enemy.tag, level: war.enemy.level },
-          mine: war.mineIsA ? war.pair.pa : war.pair.pb, theirs: war.mineIsA ? war.pair.pb : war.pair.pa,
-          endsAt: (dayOf(now) + 1) * DAY,
-          targets: members(war.enemy).filter((x) => x.dps > 0).map(pub).sort((x, y) => y.power - x.power),
-        } : null,
+      clan: {
+        id: c.id, name: c.name, tag: c.tag, tp: c.tp, tier: clanTier(c.tp), leader: c.leader, max: R.clanMax, lastWar: c.lastWar,
+        members: members(c).map((x) => ({ ...pub(x), leader: x.id === c.leader, me: x.id === u.id, points: contrib[x.id] || 0 }))
+          .sort((x, y) => y.points - x.points || y.power - x.power),
       },
-      left: { donations: R.donationsPerDay - u.donations, boss: R.bossAttacksPerDay - u.bossAttacks, war: R.warAttacksPerDay - u.warAttacks },
+      war: war && war.enemy ? {
+        day, days: war.pair.days.map((d) => (war.side ? [d[1], d[0]] : d)), values: WAR_DAY_VALUE, kinds: WAR_DAYS,
+        enemy: { name: war.enemy.name, tag: war.enemy.tag, tier: clanTier(war.enemy.tp) },
+        endsAt: activeEnd(now), dayEndsAt: (dayOf(now) + 1) * DAY, tickets: u.warTix, myPoints: contrib[u.id] || 0,
+        targets: day === 5 ? members(war.enemy).filter((x) => x.dps > 0).map((x) => ({ ...pub(x), beaten: !!war.pair.beaten[x.id] })).sort((x, y) => y.power - x.power) : [],
+      } : null,
+      week: { day, endsAt: day === 6 ? weekEnd(now) : activeEnd(now) },
     };
   }
 
-  function allyDonate(u, _p, now) {
+  function warReport(u, { log }, now) {
     touch(u, now);
-    const a = myAlliance(u);
-    if (u.donations >= R.donationsPerDay) fail('limit');
-    u.donations++; a.donated[u.id] = (a.donated[u.id] || 0) + 1;
-    addXp(a, R.donationXp);
-    return { reward: { gems: 2 }, ...allyGet(u, {}, now) };
+    const c = myClan(u), war = warOf(c, now);
+    if (!war || !log || typeof log !== 'object') return { added: 0, ...me(u, now) };
+    const day = weekDay(now);
+    let added = 0;
+    for (const [key, count] of Object.entries(log).slice(0, 50)) added += warPoints(key, count, day);
+    war.pair.days[day][war.side] += added;
+    war.pair.contrib[u.id] = (war.pair.contrib[u.id] || 0) + added;
+    return { added, ...me(u, now) };
   }
 
-  function allyBoss(u, _p, now) {
+  function warFight(u, { id: oppId }, now) {
     touch(u, now);
-    const a = myAlliance(u);
-    if (!(u.dps > 0)) fail('no_snapshot');
-    if (u.bossAttacks >= R.bossAttacksPerDay) fail('limit');
-    if (!a.boss) spawnBoss(a, 1);
-    u.bossAttacks++;
-    const dmg = Math.min(a.boss.hp, u.dps * R.bossBurstSeconds * (0.9 + 0.2 * rnd()));
-    a.boss.hp -= dmg;
-    if (!a.boss.hitters.includes(u.id)) a.boss.hitters.push(u.id);
-    let killed = false;
-    if (a.boss.hp <= 0) {
-      killed = true;
-      const gems = Math.min(25, 5 + a.boss.level);
-      for (const mid of a.boss.hitters) { const m = data.users[mid]; if (m && m.alliance === a.id) m.pending += gems; }
-      addXp(a, 50 * a.boss.level);
-      spawnBoss(a, a.boss.level + 1);
-    }
-    return { dmg, killed, ...allyGet(u, {}, now) };
-  }
-
-  function allyWarFight(u, { id: oppId }, now) {
-    touch(u, now);
-    myAlliance(u);
-    const war = warOf(u, now);
-    if (!war || !war.enemy) fail('no_war');
+    const c = myClan(u), war = warOf(c, now);
+    if (!war || !war.enemy || weekDay(now) !== 5) fail('no_war');
     if (!(u.dps > 0 && u.hp > 0)) fail('no_snapshot');
-    if (u.warAttacks >= R.warAttacksPerDay) fail('limit');
-    const opp = data.users[oppId];
-    if (!opp || opp.alliance !== war.enemy.id) fail('not_found');
-    u.warAttacks++;
-    const res = duel(u, opp, rnd);
-    const pts = res.win ? 3 : 1;
-    if (war.mineIsA) war.pair.pa += pts; else war.pair.pb += pts;
-    if (!war.pair.hitters.includes(u.id)) war.pair.hitters.push(u.id);
-    return { ...res, points: pts, opponent: { name: opp.name, tag: tagOf(opp), plane: opp.plane }, ...allyGet(u, {}, now) };
-  }
-
-  function claim(u, _p, now) {
-    const gems = u.pending; u.pending = 0;
-    return { reward: { gems }, ...me(u, now) };
+    if (u.warTix <= 0) fail('no_tickets');
+    const enemies = members(war.enemy).filter((x) => x.dps > 0).sort((x, y) => powerOf(y) - powerOf(x));
+    const idx = enemies.findIndex((x) => x.id === oppId);
+    if (idx < 0) fail('not_found');
+    u.warTix--;
+    const opp = enemies[idx], res = duel(u, opp, rnd);
+    let pts = res.win ? Math.round(1 + 49 * (enemies.length > 1 ? 1 - idx / (enemies.length - 1) : 1)) : 0;
+    if (res.win) {
+      war.pair.beaten[opp.id] = true;
+      if (!war.pair.brawl[war.side] && enemies.every((x) => war.pair.beaten[x.id])) { war.pair.brawl[war.side] = true; pts += 1000; }
+    }
+    war.pair.days[5][war.side] += pts;
+    war.pair.contrib[u.id] = (war.pair.contrib[u.id] || 0) + pts;
+    return { ...res, points: pts, opponent: { name: opp.name, tag: war.enemy.tag, plane: opp.plane }, ...clanGet(u, {}, now) };
   }
 
   // ---------- chat ----------
   function channelKey(u, channel) {
-    if (channel === 'alliance') return 'a:' + myAlliance(u).id;
+    if (channel === 'alliance') return 'a:' + myClan(u).id;
     return 'g:' + u.server;
   }
   function chatGet(u, { channel, after = 0 }) {
@@ -377,9 +433,9 @@ export function createWorld(data = emptyData(), { rnd = Math.random, rules = {} 
 
   const ACTIONS = {
     me: (u, p, now) => me(u, now), sync, claim,
-    'arena.list': (u, p, now) => arenaList(u, now), 'arena.fight': arenaFight, 'arena.refill': arenaRefill, 'arena.top': arenaTop,
-    'ally.list': allyList, 'ally.create': allyCreate, 'ally.join': allyJoin, 'ally.leave': allyLeave, 'ally.get': allyGet,
-    'ally.donate': allyDonate, 'ally.boss': allyBoss, 'ally.war': allyWarFight,
+    'league.get': leagueGet, 'league.fight': leagueFight,
+    'clan.list': clanList, 'clan.create': clanCreate, 'clan.join': clanJoin, 'clan.leave': clanLeave, 'clan.get': clanGet,
+    'war.report': warReport, 'war.fight': warFight,
     'chat.get': chatGet, 'chat.send': chatSend, 'chat.report': chatReport,
   };
 
@@ -392,5 +448,5 @@ export function createWorld(data = emptyData(), { rnd = Math.random, rules = {} 
     return fn(u, payload, now);
   }
 
-  return { data, handle, rules: R };
+  return { data, handle, rules: R, groupOf, standings, warOf };
 }

@@ -9,47 +9,59 @@ Il gioco è una web app (Vite, JavaScript senza framework, grafica su canvas) im
 
 ## Come si gioca
 
-Il ciclo di gioco è quello degli idle RPG "a forgia": si costruiscono pezzi casuali, si tengono i migliori e
-si avanza finché il livello dell'officina lo permette.
+I meccanismi seguono quelli di **Forge Master: Idle RPG**, ricostruiti dalle guide e dalle tabelle pubblicate
+dalla community (ForgeMaster Helper, aggiornamento 31/12/2025): probabilità della forgia per livello, costi e
+tempi dei potenziamenti, rarità di casse, manovre ed emblemi, tempi della ricerca, leghe e guerra tra clan.
+Nomi, grafica e tema sono nostri (aviazione); le corrispondenze sono indicate tra parentesi.
 
-- **Officina**: ogni chiave inglese costruisce un pezzo a caso per uno degli 8 posti dell'aereo (mitragliatrici,
-  motore, elica, mirino, fusoliera, ali, corazza, carrello). Il pezzo ha un livello, una qualità tra 7 (da Tela
-  a Leggenda) e, se non è comune, un bonus secondario. Lo si monta al posto del vecchio oppure lo si vende.
-  La costruzione automatica monta da sola i pezzi migliori e vende gli altri.
-- **Livello dell'officina**: decide il livello massimo dei pezzi e le probabilità delle qualità rare. Si
-  potenzia con le monete e richiede tempo reale (da 20 secondi a più giorni); il tempo si accorcia con un
-  video o si salta con le gemme.
-- **Missioni a capitoli** (1-1, 1-2 … 1-10): 6 nemici per missione, boss a tempo alla decima. Completare una
-  missione dà chiavi inglesi. Toccando il cielo si lanciano razzi.
-- **Vita della squadriglia**: i nemici sparano. La vita si ricarica a ogni missione; se finisce si arretra di
-  una missione e si resta in pattuglia finché non si decide di avanzare di nuovo.
-- **Squadra**: 8 gregari comprati con le monete, ogni livello dà +3% a danno e vita. 5 aerei comprati con le
-  gemme moltiplicano danno e vita e restano per sempre.
-- **Arena PvP**: duelli contro altri giocatori dello stesso server, biglietti che si ricaricano, trofei, leghe
-  e classifica. Vince chi ha più potenza (danno × vita).
-- **Alleanza**: fino a 20 piloti, bonus al danno che cresce col livello, donazioni, boss da abbattere insieme,
-  guerra quotidiana contro un'alleanza rivale di forza simile.
-- **Chat**: canale globale del server e canale dell'alleanza, con filtro e segnalazione dei messaggi.
-- **Guadagni offline** fino a 4 ore (monete e chiavi inglesi), premio giornaliero, obiettivi, rifornimenti aerei.
+- **Officina** (forgia): ogni chiave inglese (martello) costruisce un pezzo a caso per uno degli 8 posti
+  dell'aereo: 4 danno, 4 vita. Il pezzo ha un livello e un'epoca tra 10 (Pionieri … Mitica, come Primitive …
+  Divine); dall'epoca 1 ha statistiche secondarie (cadenza, critico, danno critico, doppio colpo, assorbimento,
+  rigenerazione, parata, danno e ricarica delle manovre). Si monta o si vende per monete; la vendita è la fonte
+  principale di monete, come nell'originale.
+- **Livello dell'officina**: 35 livelli con le probabilità delle epoche dell'originale. Si paga a rate (fino a
+  10) e poi richiede tempo reale: 5 minuti per il livello 2, 7 ore e mezza per il 7, giorni più avanti. Video per
+  -30 minuti, gemme per finire subito.
+- **Costruzione automatica** dalla missione 2-10, si ferma quando esce un pezzo da un'epoca scelta. Costruzione
+  doppia e tripla alle missioni 5-15 e 7-15.
+- **Missioni** a capitoli di 20 (1-1 … 1-20), tre ondate per missione, boss a tempo all'ultima. La vita della
+  squadriglia si ricarica a ogni missione; se finisce si arretra di una missione.
+- **Manovre** (abilità), dalla 2-15: 12 abilità attive in 6 rarità, reclutate con i piani di volo. Fino a 4 posti,
+  lancio automatico o manuale, livello di reclutamento che migliora le rarità (tabella dell'originale).
+- **Droni di scorta** (animali), dalla 3-1: escono dalle casse con tempi di consegna da 30 minuti a 32 ore. I
+  doppioni si fondono e salgono di livello. Fino a 3 posti.
+- **Emblemi** (cavalcature), dalla 4-15: +10% … +400% a danno e vita per rarità, dipinti con la vernice.
+- **Ricerca** (albero tecnologico): 24 nodi in tre rami (officina, potenza, squadra), 25 livelli ciascuno in 5
+  gradi sbloccati dalle missioni, con i tempi e i costi in progetti dell'originale.
+- **Dungeon**: Assalto al deposito (chiavi inglesi e monete, 2-10), Base fantasma (piani di volo, 2-15),
+  Invasione (casse, 3-1), Sciame (progetti, 4-1). Due chiavi al giorno, usate solo se si vince, livelli 1-1 …
+  10-10 e combattimento rapido sull'ultimo livello superato.
+- **Arena** dalla 3-10: lega settimanale con gironi da 100 piloti dello stesso server, da Senza lega a Diamante,
+  promozioni e retrocessioni e premi con le soglie dell'originale. Stagione martedì-domenica, lunedì di pausa,
+  biglietti giornalieri che non si accumulano.
+- **Alleanze** dalla 4-15, fino a 50 piloti, 24 ore di attesa dopo l'uscita. **Guerra settimanale** contro
+  un'alleanza rivale: ogni giorno conta un tipo di azione (martedì forgia e ricerca, mercoledì monete spese,
+  dungeon e casse, …, domenica attacchi ai piloti rivali) e vale da 1 a 5 punti. Le fasce S/A/B/C decidono i premi.
+- **Chat** globale del server e dell'alleanza; **server** assegnati per data d'iscrizione.
+- **Guadagni offline** fino a 4 ore, premio giornaliero, obiettivi, **Pass di volo** di 30 gradi con fila Premium.
 
 ## Monetizzazione
 
 | Fonte | Dove | Cosa dà |
 | --- | --- | --- |
-| Video con premio | Officina | 30 minuti in meno sul potenziamento in corso |
-| Video con premio | Negozio | 25 chiavi inglesi ogni 10 minuti, 5 gemme ogni 15, monete ×2 per 15 minuti |
-| Video con premio | Ritorno dopo l'assenza | Raddoppia le monete offline |
-| Video con premio | Cassa del rifornimento aereo | Premio in monete molto più grande |
-| Video con premio | Arena | Ricarica dei biglietti (3 volte al giorno) |
-| Gemme | Officina, Negozio, Hangar | Completare subito un potenziamento, 60 chiavi inglesi, aerei, fondare un'alleanza |
-| Acquisto | `gems_80`, `gems_500`, `gems_1200`, `gems_3000` | Pacchetti di gemme (consumabili) |
-| Acquisto | `starter_pack` | 300 gemme + 200 chiavi inglesi, una volta sola (consumabile) |
-| Acquisto | `double_coins` | Monete ×2 per sempre (non consumabile) |
-| Acquisto | `remove_ads` | Tutti i premi video senza guardare annunci (non consumabile) |
+| Video con premio | Officina, Ricerca, Casse | 30 minuti in meno sul timer |
+| Video con premio | Negozio | 60 chiavi inglesi ogni 10 minuti, 5 gemme ogni 15 |
+| Video con premio | Ritorno dopo l'assenza | Raddoppia monete e chiavi inglesi offline |
+| Gemme | Ovunque ci sia un timer | Completare subito (1 gemma ogni 2 minuti rimasti) |
+| Gemme | Negozio | Chiavi inglesi, chiavi dei dungeon, vernice, piani di volo; fondare un'alleanza |
+| Acquisto | \`premium_pass\` | Seconda fila di premi del Pass per la stagione (30 giorni) |
+| Acquisto | \`gems_80\`, \`gems_500\`, \`gems_1200\`, \`gems_3000\` | Pacchetti di gemme (consumabili) |
+| Acquisto | \`starter_pack\` | 300 gemme + 500 chiavi inglesi, una volta sola |
+| Acquisto | \`remove_ads\` | Tutti i premi video senza guardare annunci (non consumabile) |
 
-Non ci sono annunci forzati: negli idle sono i video scelti dal giocatore a rendere, e non fanno disinstallare.
-Le due leve principali sono le chiavi inglesi (per costruire di più) e i tempi dell'officina.
-Un banner in basso è già previsto ma spento (`banner.enabled` in `src/config.js`).
+Come nell'originale, la leva principale sono i **timer** (officina, ricerca, casse) e il **Pass Premium**.
+Non ci sono annunci forzati; un banner è previsto ma spento (\`banner.enabled\` in \`src/config.js\`).
+Il Pass Premium va creato sugli store come prodotto consumabile e venduto una volta per stagione.
 
 ## Sviluppo
 
@@ -63,9 +75,10 @@ npm run build    # build di produzione in dist/
 Nel browser non esiste uno store: i video diventano un conto alla rovescia di prova e gli acquisti una finestra
 di conferma che non addebita nulla. Sui telefoni si usano AdMob e gli store veri.
 
-Struttura: `src/game.js` (regole, senza DOM), `src/data.js` (numeri e prezzi), `src/render.js` (canvas),
-`src/ui.js` e `src/ui-online.js` (schede e finestre), `src/icons.js` (icone), `src/monetization.js`
-(AdMob + RevenueCat), `src/i18n.js` (testi), `shared/social.js` (regole online), `server/index.js` (server).
+Struttura: `src/game.js` (regole, senza DOM), `src/data.js` e `src/tables.js` (numeri, tabelle e prezzi),
+`src/render.js` (canvas), `src/ui.js`, `src/ui-squad.js`, `src/ui-progress.js`, `src/ui-online.js` (schermate),
+`src/icons.js` (icone), `src/monetization.js` (AdMob + RevenueCat), `src/i18n.js` (testi),
+`shared/social.js` (regole online), `server/index.js` (server).
 
 ## Gioco online
 
@@ -85,14 +98,17 @@ Come funziona il server:
   globale sono separate per server, così i veterani non incontrano i nuovi arrivati.
 - **Dati**: tutto in memoria, salvato su `server-data/world.json` ogni 30 secondi e alla chiusura. Va bene per
   il lancio; con molte migliaia di giocatori attivi conviene passare a un database.
-- **Avversari d'addestramento**: se un server ha pochi giocatori l'arena si completa con bot, indicati come tali.
+- **Avversari d'addestramento**: se un girone ha pochi giocatori l'arena si completa con bot, indicati come tali.
+- **Settimana di gioco**: lega e guerra partono il martedì alle 00:00 UTC; il lunedì si chiudono stagione e
+  guerra, e i premi arrivano al primo accesso successivo.
 - **Hosting**: qualsiasi servizio che esegua Node 20+ con un disco persistente (variabili `PORT` e `DATA_DIR`).
 
 Limiti da conoscere prima del lancio:
 
 - La potenza del giocatore viene comunicata dall'app e il server si fida: un'app modificata può barare in
   arena. Per classifiche con premi veri serve ricalcolare i progressi sul server.
-- Le gemme guadagnate online vengono accreditate dall'app, per lo stesso motivo.
+- I premi online (lega e guerra) e i punti di guerra vengono accreditati o comunicati dall'app, per lo stesso
+  motivo: un'app modificata può gonfiarli.
 - La chat ha filtro parole, limite di frequenza e segnalazioni (3 segnalazioni nascondono un messaggio), ma
   non ha ancora strumenti da moderatore né blocco degli utenti. Gli store li richiedono per le app con chat.
 - L'account è legato all'installazione: cambiando telefono si perde. Manca il recupero account.
@@ -125,7 +141,12 @@ personali un test chiuso con più tester prima del rilascio pubblico.
 
 ## Stato
 
-Provato nel browser in emulazione telefono: officina, combattimento, acquisti, video di prova, salvataggio,
-guadagni offline, arena, alleanza, guerra e chat in modalità demo. Il server è coperto dai test e provato in
-locale via HTTP, non ancora messo in rete né provato con giocatori veri. L'integrazione nativa con AdMob e RevenueCat segue le API dei plugin installati ma **non è
-stata ancora eseguita su un dispositivo**: va verificata con gli ID di test prima del rilascio.
+Provato nel browser in emulazione telefono: officina con rate e probabilità, costruzione automatica, missioni e
+ondate, manovre, droni e casse, emblemi, ricerca, dungeon, Pass, negozio, salvataggio, arena, alleanza, guerra
+e chat in modalità demo. Le regole sono coperte da test automatici (`npm test`) e il ritmo è stato verificato
+con una simulazione di 72 ore di gioco: missione 4-9 dopo 24 ore e 5-16 dopo 48, vicino al riferimento
+dell'originale ("4-15 in un giorno con una buona configurazione").
+
+Non ancora fatto: server messo in rete e provato con giocatori veri; integrazione nativa con AdMob e RevenueCat
+eseguita su un dispositivo (segue le API dei plugin installati, va verificata con gli ID di test). I numeri di
+stage, danni dei nemici e premi delle nostre risorse sono nostri: le guide pubbliche non li riportano.

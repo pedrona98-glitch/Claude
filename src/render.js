@@ -1,7 +1,9 @@
 // Scena di battaglia su canvas. Tutta la grafica è disegnata a mano: nessuna immagine esterna.
-import { PILOTS, AIRCRAFT } from './data.js';
+import { AGES, RARITIES, DRONES } from './data.js';
 import { fmt } from './format.js';
-import { squadMaxHp } from './game.js';
+import { stats } from './game.js';
+
+const DRONE_R = Object.fromEntries(DRONES.map((d) => [d.id, d.r]));
 
 const ZONES = [
   { sky: ['#274b7a', '#5f8fc4', '#dfe9f2'], hill: '#2c4a63', haze: '#c9d9e8', cloud: '#ffffff', sun: '#fff6d8' }, // mattino
@@ -57,9 +59,9 @@ export function createRenderer(canvas) {
     const p = playerPos(), e = enemyPos(), u = unit();
     const jitter = () => ({ x: e.x + (Math.random() - 0.5) * u * 0.6, y: e.y + (Math.random() - 0.5) * u * 0.3 });
     if (ev.t === 'spawn') { enemyIn = 0; }
-    else if (ev.t === 'shot' || ev.t === 'tap') {
+    else if (ev.t === 'shot' || ev.t === 'tap' || ev.t === 'skill') {
       const to = jitter();
-      bullet({ x: p.x + u * 0.5, y: p.y }, to, ev.t === 'tap' ? '#f2b866' : '#fff6d8', ev.t === 'tap');
+      bullet({ x: p.x + u * 0.5, y: p.y }, to, ev.t === 'skill' ? '#7fd6e8' : ev.t === 'tap' ? '#f2b866' : '#fff6d8', ev.t !== 'shot');
       enemyHit = 0.12; recoil = 0.08;
       text(fmt(ev.dmg), to.x, to.y - u * 0.3, ev.crit ? '#f2c86b' : '#ffffff', ev.crit ? 18 : 12);
       burst(to.x, to.y, ev.crit ? 7 : 3, ev.crit ? '#f2c86b' : '#ffffff', 90);
@@ -67,7 +69,7 @@ export function createRenderer(canvas) {
       burst(e.x, e.y, ev.boss ? 60 : 22, '#f2b866', ev.boss ? 260 : 170);
       burst(e.x, e.y, ev.boss ? 30 : 10, '#4a4a4a', 90);
       fx.wrecks.push({ x: e.x, y: e.y, vy: -30, rot: 0, boss: ev.boss, shape: enemyShape(state.stage), color: enemyColor(state.stage), life: 1.4 });
-      text('+' + fmt(ev.coins), e.x, e.y - u * 0.6, '#e9c877', ev.boss ? 20 : 15);
+      text('+1', e.x, e.y - u * 0.6, '#e9c877', ev.boss ? 20 : 15);
       shake = ev.boss ? 0.5 : 0.12;
     } else if (ev.t === 'bossFail') { enemyIn = 0; }
     else if (ev.t === 'defeat') { enemyIn = 0; hurt = 1; shake = 0.5; burst(p.x, p.y, 40, '#e5687a', 220); burst(p.x, p.y, 20, '#3a3a3a', 100); }
@@ -81,7 +83,7 @@ export function createRenderer(canvas) {
     if (!w || !h) return;
     enemyIn = Math.min(1, enemyIn + dt * 3.2);
     enemyHit = Math.max(0, enemyHit - dt); recoil = Math.max(0, recoil - dt); shake = Math.max(0, shake - dt);
-    const zone = ZONES[Math.floor((state.stage - 1) / 10) % ZONES.length];
+    const zone = ZONES[Math.floor((state.stage - 1) / 20) % ZONES.length];
     const u = unit();
 
     ctx.save();
@@ -136,12 +138,12 @@ export function createRenderer(canvas) {
 
     // gregari
     const p = playerPos();
-    const hired = PILOTS.filter((x) => state.pilots[x.id] > 0);
+    const hired = state.drones.eq.map((id) => ({ id, color: RARITIES[DRONE_R[id] || 0].color }));
     hired.forEach((pl, i) => {
       const row = Math.floor(i / 2) + 1, side = i % 2 ? 1 : -1;
       const x = p.x - row * u * 0.55, y = p.y + side * row * u * 0.42 + Math.sin(time * 2 + i) * 3;
       pl._x = x; pl._y = y;
-      drawPlane(ctx, 'mono', pl.color, x, y, u * 0.5, time + i, 1);
+      drawPlane(ctx, 'drone', pl.color, x, y, u * 0.42, time + i, 1);
     });
     wingTimer -= dt;
     if (hired.length && state.enemy && wingTimer <= 0) {
@@ -159,7 +161,7 @@ export function createRenderer(canvas) {
     }
 
     // giocatore
-    const plane = AIRCRAFT.find((a) => a.id === state.aircraft.equipped);
+    const hull = state.parts.hull, plane = { shape: AGES[hull ? hull.age : 0].shape, color: hull ? AGES[hull.age].color : '#d95d39' };
     drawPlane(ctx, plane.shape, plane.color, p.x - (recoil > 0 ? 2 : 0), p.y, u, time, 1);
 
     // nemico
@@ -213,7 +215,7 @@ export function createRenderer(canvas) {
     ctx.restore();
 
     // vignetta; rossa quando la squadriglia è in pericolo
-    const max = squadMaxHp(state), danger = Math.max(hurt, state.hp > 0 && state.hp / max < 0.3 ? 0.5 + 0.2 * Math.sin(time * 6) : 0);
+    const max = stats(state).hp, danger = Math.max(hurt, state.hp > 0 && state.hp / max < 0.3 ? 0.5 + 0.2 * Math.sin(time * 6) : 0);
     const vg = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.45, w / 2, h / 2, Math.max(w, h) * 0.75);
     vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, danger ? `rgba(200,50,70,${0.45 * danger})` : 'rgba(6,10,20,.38)');
     ctx.fillStyle = vg; ctx.fillRect(0, 0, w, h);
@@ -236,6 +238,18 @@ export function drawPlane(ctx, shape, color, x, y, size, t = 0, dir = 1, flash =
   const prop = shape !== 'jet' && shape !== 'stealth';
   ctx.lineJoin = 'round';
 
+  if (shape === 'drone') {
+    // drone di scorta: corpo a goccia, quattro rotori
+    ctx.fillStyle = dark;
+    for (const rx of [-26, 22]) { ctx.fillRect(rx - 12, -14, 24, 3); ctx.fillRect(rx - 12, 11, 24, 3); }
+    ctx.fillStyle = body; ctx.beginPath(); ctx.ellipse(0, 0, 34, 12, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = light; ctx.beginPath(); ctx.ellipse(4, -4, 24, 4, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#bfe3f5'; ctx.beginPath(); ctx.arc(22, -1, 5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,.35)';
+    for (const rx of [-26, 22]) for (const ry of [-13, 12]) { ctx.beginPath(); ctx.ellipse(rx, ry, 14 * Math.abs(Math.sin(t * 30 + rx)), 2, 0, 0, Math.PI * 2); ctx.fill(); }
+    ctx.restore();
+    return;
+  }
   if (shape === 'stealth') {
     flame(ctx, -46, 2, t);
     poly(ctx, dark, [[-48, 2], [-20, -10], [20, -8], [52, 2], [10, 9], [-30, 9]]);

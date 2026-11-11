@@ -4,7 +4,7 @@ import '@fontsource/barlow-condensed/latin-600.css';
 import '@fontsource/barlow-condensed/latin-700.css';
 import './style.css';
 import * as G from './game.js';
-import { DROP_INTERVAL } from './data.js';
+import { AGES } from './data.js';
 import { setLang, t } from './i18n.js';
 import { sfx, setSound, unlockAudio } from './audio.js';
 import { createRenderer } from './render.js';
@@ -13,6 +13,7 @@ import { Monet } from './monetization.js';
 
 const SAVE_KEY = 'sky_squadron_idle_save_v1';
 const OFFLINE_MIN_SECONDS = 60;
+const AUTO_EVERY = 0.35;
 
 function readSave() {
   try { return JSON.parse(localStorage.getItem(SAVE_KEY)); } catch { return null; }
@@ -25,10 +26,11 @@ const app = {
     try { localStorage.setItem(SAVE_KEY, JSON.stringify(G.serialize(app.state))); } catch { /* storage non disponibile */ }
   },
   reset() {
-    const keep = { perks: app.state.perks, purchased: app.state.purchased, settings: app.state.settings, online: { ...app.state.online, allyLevel: 0 } };
+    const s = app.state, keep = { perks: s.perks, purchased: s.purchased, settings: s.settings, online: s.online };
     app.state = Object.assign(G.newState(), keep);
     app.save(); ui.render();
   },
+  handle: (list) => handle(list),
 };
 
 setLang(app.state.settings.lang);
@@ -38,42 +40,38 @@ document.title = t('title');
 const battle = document.querySelector('#battle');
 const renderer = createRenderer(document.querySelector('#sky'));
 const ui = createUI(app);
+G.checkPassSeason(app.state, Date.now());
 ui.render();
 
 function checkOffline() {
   const away = (Date.now() - app.state.lastSeen) / 1000;
   if (away < OFFLINE_MIN_SECONDS) return;
-  const { secs, coins, wrenches } = G.offlineEarnings(app.state, away, Date.now());
+  const { secs, coins, wrenches } = G.offlineEarnings(app.state, away);
   app.state.lastSeen = Date.now();
-  if (coins > 0 && !ui.hasModal()) ui.showOffline(secs, coins, wrenches);
+  if ((coins > 0 || wrenches > 0) && !ui.hasModal()) ui.showOffline(secs, coins, wrenches);
 }
 checkOffline();
 
 // ---------- ciclo di gioco ----------
 const events = [];
 let last = performance.now(), uiTimer = 0, saveTimer = 0, autoTimer = 0;
-let dropAt = performance.now() + 45000;
 
 function frame(ts) {
   const dt = Math.min(0.25, Math.max(0, (ts - last) / 1000));
   last = ts;
-  const s = app.state;
+  const s = app.state, now = Date.now();
   events.length = 0;
-  G.tick(s, dt, Date.now(), events);
+  G.tick(s, dt, now, events);
   handle(events);
   renderer.draw(s, dt);
-  // costruzione automatica: un pezzo ogni terzo di secondo finché ci sono chiavi
-  if (s.auto && (autoTimer += dt) >= 0.33) {
+  // costruzione automatica: finché ci sono chiavi inglesi e nessun pezzo da valutare a mano
+  if (s.auto.on && G.unlocked(s, 'autoForge') && (autoTimer += dt) >= AUTO_EVERY) {
     autoTimer = 0;
     const r = G.autoBuild(s);
-    if (r && r.equipped) { ui.flash(r.part.slot); sfx.buy(); }
+    if (r) for (const x of r) { if (x.equipped) { ui.flash(x.part.slot); sfx.buy(); } if (x.stopped) ui.toast(t('auto_stopped', t('age_' + AGES[x.part.age].id))); }
   }
   if ((uiTimer += dt) >= 0.2) { uiTimer = 0; ui.refresh(); }
-  if ((saveTimer += dt) >= 10) { saveTimer = 0; app.save(); }
-  if (ts >= dropAt) {
-    dropAt = ts + 1000 * (DROP_INTERVAL[0] + Math.random() * (DROP_INTERVAL[1] - DROP_INTERVAL[0]));
-    ui.showDrop();
-  }
+  if ((saveTimer += dt) >= 10) { saveTimer = 0; G.checkPassSeason(s, now); app.save(); }
   requestAnimationFrame(frame);
 }
 
@@ -81,13 +79,15 @@ function handle(list) {
   for (const ev of list) {
     renderer.onEvent(ev, app.state);
     if (ev.t === 'shot') sfx.shot();
-    else if (ev.t === 'tap') sfx.rocket();
-    else if (ev.t === 'kill') {
-      if (ev.boss) { sfx.boss(); ui.banner(t('boss_win'), 'good'); } else sfx.kill();
-    } else if (ev.t === 'bossFail') { sfx.fail(); ui.banner(t('boss_fail'), 'bad'); }
+    else if (ev.t === 'tap' || ev.t === 'skill') sfx.rocket();
+    else if (ev.t === 'kill') { if (ev.boss) { sfx.boss(); ui.banner(t('boss_win'), 'good'); } else sfx.kill(); }
+    else if (ev.t === 'bossFail') { sfx.fail(); ui.banner(t('boss_fail'), 'bad'); }
     else if (ev.t === 'defeat') { sfx.fail(); ui.banner(t('defeat'), 'bad'); }
-    else if (ev.t === 'stage' && !G.isBoss(ev.stage - 1)) ui.banner(t('new_stage', G.stageName(ev.stage)));
-    else if (ev.t === 'workshop') { sfx.reward(); ui.banner(`${t('workshop')} ${ev.level}`, 'good'); }
+    else if (ev.t === 'stage') ui.banner(t('new_stage', G.stageName(ev.stage)));
+    else if (ev.t === 'forge') { sfx.reward(); ui.banner(`${t('workshop')} ${ev.level}`, 'good'); }
+    else if (ev.t === 'tech') { sfx.reward(); ui.toast(t('research_done', t('tn_' + ev.id))); }
+    else if (ev.t === 'crate') ui.toast(t('crate_arrived'));
+    else if (ev.t === 'unlock') ui.showUnlock(ev.key);
   }
 }
 
