@@ -3,29 +3,33 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-  <meta name="theme-color" content="#101a2e">
+  <meta name="theme-color" content="#0b111d">
   <title>Sky Squadron Idle</title>
 </head>
 <body>
   <div id="app">
     <header id="hud">
-      <div class="cur" title="Monete"><span>🪙</span><b id="coins">0</b></div>
-      <div class="cur" title="Gemme"><span>💎</span><b id="gems">0</b></div>
-      <div class="cur" title="Medaglie"><span>🎖️</span><b id="medals">0</b></div>
-      <button id="btn-settings" aria-label="Impostazioni">⚙️</button>
+      <div class="cur" title="Monete"><i data-ic="coin"></i><b id="coins">0</b></div>
+      <div class="cur" title="Gemme"><i data-ic="gem"></i><b id="gems">0</b></div>
+      <div class="cur" title="Medaglie"><i data-ic="medal"></i><b id="medals">0</b></div>
+      <button id="btn-chat" class="round" aria-label="Chat" data-ic="chat"></button>
+      <button id="btn-settings" class="round" aria-label="Impostazioni" data-ic="gear"></button>
     </header>
 
     <section id="battle">
       <canvas id="sky"></canvas>
       <div id="stagebar">
         <div class="stage-line"><b id="stage-name"></b><span id="stage-info"></span></div>
-        <div id="hp"><div id="hp-fill"></div><span id="hp-text"></span></div>
+        <div id="hp" class="meter"><div id="hp-fill"></div><span id="hp-text"></span></div>
       </div>
       <div id="banner"></div>
       <div id="tap-hint"></div>
-      <button id="boost-chip" hidden></button>
       <button id="btn-boss" hidden></button>
-      <div id="dps"></div>
+      <div id="footbar">
+        <div id="squad-hp"><i data-ic="heart"></i><div class="meter good"><div class="meter-fill" id="sq-fill"></div><span id="sq-text"></span></div></div>
+        <div id="dps"></div>
+        <button id="boost-chip" hidden><i data-ic="flame"></i><span id="boost-text"></span></button>
+      </div>
     </section>
 
     <main id="panel"></main>

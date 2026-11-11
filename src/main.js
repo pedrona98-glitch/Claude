@@ -1,3 +1,7 @@
+import '@fontsource/barlow/latin-400.css';
+import '@fontsource/barlow/latin-600.css';
+import '@fontsource/barlow-condensed/latin-600.css';
+import '@fontsource/barlow-condensed/latin-700.css';
 import './style.css';
 import * as G from './game.js';
 import { DROP_INTERVAL } from './data.js';
@@ -21,7 +25,7 @@ const app = {
     try { localStorage.setItem(SAVE_KEY, JSON.stringify(G.serialize(app.state))); } catch { /* storage non disponibile */ }
   },
   reset() {
-    const keep = { perks: app.state.perks, purchased: app.state.purchased, settings: app.state.settings };
+    const keep = { perks: app.state.perks, purchased: app.state.purchased, settings: app.state.settings, online: { ...app.state.online, allyLevel: 0 } };
     app.state = Object.assign(G.newState(), keep);
     app.save(); ui.render();
   },
@@ -75,6 +79,7 @@ function handle(list) {
     else if (ev.t === 'kill') {
       if (ev.boss) { sfx.boss(); ui.banner(t('boss_win'), 'good'); } else sfx.kill();
     } else if (ev.t === 'bossFail') { sfx.fail(); ui.banner(t('boss_fail'), 'bad'); }
+    else if (ev.t === 'defeat') { sfx.fail(); ui.banner(t('defeat'), 'bad'); }
     else if (ev.t === 'stage' && !G.isBoss(ev.stage - 1)) ui.banner(t('new_stage', ev.stage));
   }
 }

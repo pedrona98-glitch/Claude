@@ -9,7 +9,8 @@
     "test": "node --test tests/*.test.js",
     "cap:sync": "vite build && cap sync",
     "android": "vite build && cap sync android && cap open android",
-    "ios": "vite build && cap sync ios && cap open ios"
+    "ios": "vite build && cap sync ios && cap open ios",
+    "server": "node server/index.js"
   },
   "repository": {
     "type": "git",
@@ -26,6 +27,8 @@
     "@capacitor-community/admob": "^8.3.0",
     "@capacitor/app": "^8.1.2",
     "@capacitor/core": "^8.6.0",
+    "@fontsource/barlow": "^5.3.0",
+    "@fontsource/barlow-condensed": "^5.3.0",
     "@revenuecat/purchases-capacitor": "^14.1.0"
   },
   "devDependencies": {

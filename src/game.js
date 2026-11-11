@@ -1,7 +1,7 @@
 // Logica di gioco pura: nessun accesso a DOM o storage, così è testabile con Node.
 import {
   KILLS_PER_STAGE, BOSS_EVERY, BOSS_TIME, PRESTIGE_MIN_STAGE, OFFLINE_BASE_HOURS,
-  BOOST_MAX_SECONDS, UPGRADES, PILOTS, AIRCRAFT, TALENTS, MISSIONS, DAILY_GEMS,
+  BOOST_MAX_SECONDS, ALLIANCE_BONUS_PER_LEVEL, UPGRADES, PILOTS, AIRCRAFT, TALENTS, MISSIONS, DAILY_GEMS,
 } from './data.js';
 
 export const SAVE_VERSION = 1;
@@ -16,7 +16,7 @@ export function newState(now = Date.now()) {
     v: SAVE_VERSION,
     coins: 0, gems: 0, medals: 0,
     stage: 1, kills: 0, farming: false, bossTimer: 0,
-    up: { cannon: 1, rate: 0, crit: 0, critDmg: 0, cargo: 0 },
+    up: { cannon: 1, armor: 1, rate: 0, crit: 0, critDmg: 0, cargo: 0 },
     pilots: {},
     aircraft: { owned: ['libellula'], equipped: 'libellula' },
     talents: {},
@@ -29,8 +29,9 @@ export function newState(now = Date.now()) {
     settings: { sound: true, lang: null },
     buyMode: 1,
     lastSeen: now,
+    online: { token: null, name: '', allyLevel: 0 },
     // runtime (non salvato)
-    enemy: null, shotTimer: 0, spawnTimer: 0,
+    enemy: null, shotTimer: 0, spawnTimer: 0, hp: 0,
   };
 }
 
@@ -39,7 +40,7 @@ export function loadState(raw, now = Date.now()) {
   const s = newState(now);
   if (!raw || typeof raw !== 'object') return s;
   for (const k of Object.keys(s)) {
-    if (['enemy', 'shotTimer', 'spawnTimer', 'v'].includes(k) || raw[k] == null) continue;
+    if (['enemy', 'shotTimer', 'spawnTimer', 'hp', 'v'].includes(k) || raw[k] == null) continue;
     if (typeof s[k] === 'object' && !Array.isArray(s[k])) Object.assign(s[k], raw[k]);
     else if (typeof raw[k] === typeof s[k]) s[k] = raw[k];
   }
@@ -51,7 +52,7 @@ export function loadState(raw, now = Date.now()) {
 }
 
 export function serialize(s) {
-  const { enemy, shotTimer, spawnTimer, ...rest } = s;
+  const { enemy, shotTimer, spawnTimer, hp, ...rest } = s;
   return rest;
 }
 
@@ -63,7 +64,7 @@ export const bossTime = (s) => BOSS_TIME + 5 * (s.talents.clock || 0);
 
 const milestone = (lvl) => Math.pow(4, Math.floor(lvl / 25));
 
-export function upgradeCost(id, lvl) { return Math.ceil(UP[id].baseCost * Math.pow(UP[id].growth, lvl - (id === 'cannon' ? 1 : 0))); }
+export function upgradeCost(id, lvl) { return Math.ceil(UP[id].baseCost * Math.pow(UP[id].growth, lvl - (id === 'cannon' || id === 'armor' ? 1 : 0))); }
 export function pilotCost(id, lvl) { return Math.ceil(PILOT[id].baseCost * Math.pow(PILOT_GROWTH, lvl)); }
 
 /** Costo di n livelli consecutivi e massimo acquistabile (serie geometrica). */
@@ -92,7 +93,8 @@ export function quote(s, kind, id) {
 }
 
 export const medalBonus = (s) => 1 + 0.1 * s.medals;
-export const globalMult = (s) => PLANE[s.aircraft.equipped].mult * medalBonus(s);
+export const allianceBonus = (s) => 1 + ALLIANCE_BONUS_PER_LEVEL * (s.online.allyLevel || 0);
+export const globalMult = (s) => PLANE[s.aircraft.equipped].mult * medalBonus(s) * allianceBonus(s);
 export const shotDamage = (s) => 2 * s.up.cannon * milestone(s.up.cannon) * globalMult(s);
 export const fireRate = (s) => 1.5 + 0.075 * s.up.rate;
 export const critChance = (s) => 0.05 + 0.01 * s.up.crit;
@@ -105,6 +107,14 @@ export function pilotDps(s, id) {
 export const squadDps = (s) => PILOTS.reduce((sum, p) => sum + pilotDps(s, p.id), 0);
 export const playerDps = (s) => shotDamage(s) * fireRate(s) * (1 + critChance(s) * (critMult(s) - 1));
 export const totalDps = (s) => squadDps(s) + playerDps(s);
+/** Vita della squadriglia: corazza dell'aereo più i gregari. Si ricarica a ogni missione. */
+export function squadMaxHp(s) {
+  const pilots = PILOTS.reduce((sum, p) => sum + p.baseDps * 4 * (s.pilots[p.id] || 0) * milestone(s.pilots[p.id] || 0), 0);
+  return (50 * s.up.armor * milestone(s.up.armor) + pilots) * globalMult(s);
+}
+export const enemyAtk = (stage) => 0.6 * Math.pow(1.24, stage - 1) * (isBoss(stage) ? 2.5 : 1);
+/** Potenza complessiva, usata in arena: conta quanto il danno quanto la resistenza. */
+export const power = (s) => Math.sqrt(totalDps(s) * squadMaxHp(s));
 
 export const boostActive = (s, now) => s.boostUntil > now;
 export function coinMult(s, now) {
@@ -124,6 +134,7 @@ function spawn(s, events) {
   const hp = enemyHp(s.stage);
   s.enemy = { hp, maxHp: hp, boss };
   if (boss) s.bossTimer = bossTime(s);
+  if (!(s.hp > 0)) s.hp = squadMaxHp(s);
   events.push({ t: 'spawn', boss });
 }
 
@@ -142,16 +153,24 @@ function damage(s, dmg, now, events) {
     s.stats.bosses++;
     if (s.stage > s.stats.bossBest) { s.stats.bossBest = s.stage; s.gems += 1; events.push({ t: 'gem', n: 1 }); }
     advance(s, events);
-  } else if (!s.farming && ++s.kills >= KILLS_PER_STAGE) {
-    advance(s, events);
+  } else if (++s.kills >= KILLS_PER_STAGE) {
+    if (s.farming) { s.kills = 0; s.hp = squadMaxHp(s); } else advance(s, events);
   }
 }
 
 function advance(s, events) {
-  s.stage++; s.kills = 0;
+  s.stage++; s.kills = 0; s.hp = squadMaxHp(s);
   s.stats.runMaxStage = Math.max(s.stats.runMaxStage, s.stage);
   s.stats.maxStage = Math.max(s.stats.maxStage, s.stage);
   events.push({ t: 'stage', stage: s.stage });
+}
+
+/** Sconfitta o boss fuggito: si arretra di una missione e si resta in pattuglia. */
+function retreat(s) {
+  s.enemy = null; s.kills = 0; s.farming = true; s.spawnTimer = SPAWN_DELAY * 3;
+  s.stage = Math.max(1, s.stage - 1);
+  if (isBoss(s.stage)) s.stage -= 1;
+  s.hp = squadMaxHp(s);
 }
 
 export function tick(s, dt, now, events = []) {
@@ -163,10 +182,16 @@ export function tick(s, dt, now, events = []) {
   if (s.enemy.boss) {
     s.bossTimer -= dt;
     if (s.bossTimer <= 0) {
-      s.enemy = null; s.stage -= 1; s.kills = 0; s.farming = true; s.spawnTimer = SPAWN_DELAY;
+      retreat(s);
       events.push({ t: 'bossFail' });
       return events;
     }
+  }
+  s.hp -= enemyAtk(s.stage) * dt;
+  if (s.hp <= 0) {
+    retreat(s);
+    events.push({ t: 'defeat' });
+    return events;
   }
   damage(s, squadDps(s) * dt, now, events);
   s.shotTimer += dt * fireRate(s);
@@ -193,7 +218,7 @@ export function tap(s, now, events = []) {
 
 export function challengeBoss(s) {
   if (!s.farming) return false;
-  s.farming = false; s.stage += 1; s.kills = 0; s.enemy = null; s.spawnTimer = 0;
+  s.farming = false; s.stage += 1; s.kills = 0; s.enemy = null; s.spawnTimer = 0; s.hp = squadMaxHp(s);
   return true;
 }
 
@@ -233,8 +258,8 @@ export function prestige(s) {
   const gain = medalsOnPrestige(s);
   if (gain <= 0) return 0;
   s.medals += gain; s.stats.prestiges++;
-  s.coins = 0; s.kills = 0; s.farming = false; s.enemy = null; s.spawnTimer = 0; s.shotTimer = 0;
-  s.up = { cannon: 1, rate: 0, crit: 0, critDmg: 0, cargo: 0 };
+  s.coins = 0; s.kills = 0; s.farming = false; s.enemy = null; s.spawnTimer = 0; s.shotTimer = 0; s.hp = 0;
+  s.up = { cannon: 1, armor: 1, rate: 0, crit: 0, critDmg: 0, cargo: 0 };
   s.pilots = {};
   s.stage = 1 + 5 * (s.talents.start || 0);
   if (isBoss(s.stage)) s.stage += 1;

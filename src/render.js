@@ -1,14 +1,15 @@
 // Scena di battaglia su canvas. Tutta la grafica è disegnata a mano: nessuna immagine esterna.
 import { PILOTS, AIRCRAFT } from './data.js';
 import { fmt } from './format.js';
+import { squadMaxHp } from './game.js';
 
 const ZONES = [
-  { top: '#3f8fd8', bottom: '#bfe4ff', hill: '#3c7a5a', cloud: '#ffffff', sun: '#fff3b0' }, // giorno
-  { top: '#35477d', bottom: '#f7a072', hill: '#5b3a52', cloud: '#ffd9c2', sun: '#ffd166' }, // tramonto
-  { top: '#0b1026', bottom: '#2b3a67', hill: '#141b33', cloud: '#5d6b99', sun: '#e8ecff' }, // notte
-  { top: '#4a5568', bottom: '#a0aec0', hill: '#2d3748', cloud: '#e2e8f0', sun: '#f7fafc' }, // tempesta
-  { top: '#c2410c', bottom: '#fde68a', hill: '#92400e', cloud: '#fff7ed', sun: '#ffffff' }, // deserto
-  { top: '#0f766e', bottom: '#a7f3d0', hill: '#134e4a', cloud: '#ecfdf5', sun: '#fef9c3' }, // aurora
+  { sky: ['#274b7a', '#5f8fc4', '#dfe9f2'], hill: '#2c4a63', haze: '#c9d9e8', cloud: '#ffffff', sun: '#fff6d8' }, // mattino
+  { sky: ['#2a2f5b', '#a25f76', '#f3c69a'], hill: '#3a2c48', haze: '#e9b79a', cloud: '#ffe3cf', sun: '#ffe2a8' }, // tramonto
+  { sky: ['#070b1a', '#16224a', '#3d4f86'], hill: '#0c1228', haze: '#3d4f86', cloud: '#8794c4', sun: '#eef1ff' }, // notte
+  { sky: ['#2c3440', '#5d6b7b', '#b4bfca'], hill: '#232b35', haze: '#9aa7b4', cloud: '#e4e9ee', sun: '#f4f6f8' }, // tempesta
+  { sky: ['#5a2f1c', '#c9824a', '#f6dfae'], hill: '#5b3520', haze: '#e6bd86', cloud: '#fff3df', sun: '#fffaf0' }, // deserto
+  { sky: ['#06231f', '#1c6a62', '#b8ead3'], hill: '#0b2f2b', haze: '#7fcbb5', cloud: '#e9fbf3', sun: '#f7fbdc' }, // aurora
 ];
 const ENEMY_SHAPES = ['mono', 'biplane', 'fighter', 'jet', 'stealth'];
 const ENEMY_COLORS = ['#8d99ae', '#b56576', '#6d597a', '#588157', '#bc6c25'];
@@ -20,7 +21,7 @@ export function createRenderer(canvas) {
     x: Math.random(), y: 0.08 + Math.random() * 0.7, s: 0.5 + Math.random(), layer: i % 3,
   }));
   const fx = { bullets: [], sparks: [], texts: [], wrecks: [] };
-  let enemyIn = 0, enemyHit = 0, shake = 0, wingTimer = 0, recoil = 0;
+  let enemyIn = 0, enemyHit = 0, shake = 0, wingTimer = 0, recoil = 0, foeTimer = 0, hurt = 0;
 
   function resize() {
     const r = canvas.getBoundingClientRect(), dpr = Math.min(window.devicePixelRatio || 1, 2.5);
@@ -58,17 +59,18 @@ export function createRenderer(canvas) {
     if (ev.t === 'spawn') { enemyIn = 0; }
     else if (ev.t === 'shot' || ev.t === 'tap') {
       const to = jitter();
-      bullet({ x: p.x + u * 0.5, y: p.y }, to, ev.t === 'tap' ? '#ff9f1c' : '#fff3b0', ev.t === 'tap');
+      bullet({ x: p.x + u * 0.5, y: p.y }, to, ev.t === 'tap' ? '#f2b866' : '#fff6d8', ev.t === 'tap');
       enemyHit = 0.12; recoil = 0.08;
-      text(fmt(ev.dmg), to.x, to.y - u * 0.3, ev.crit ? '#ffd166' : '#ffffff', ev.crit ? 19 : 13);
-      burst(to.x, to.y, ev.crit ? 7 : 3, ev.crit ? '#ffd166' : '#ffffff', 90);
+      text(fmt(ev.dmg), to.x, to.y - u * 0.3, ev.crit ? '#f2c86b' : '#ffffff', ev.crit ? 18 : 12);
+      burst(to.x, to.y, ev.crit ? 7 : 3, ev.crit ? '#f2c86b' : '#ffffff', 90);
     } else if (ev.t === 'kill') {
-      burst(e.x, e.y, ev.boss ? 60 : 22, '#ff9f1c', ev.boss ? 260 : 170);
+      burst(e.x, e.y, ev.boss ? 60 : 22, '#f2b866', ev.boss ? 260 : 170);
       burst(e.x, e.y, ev.boss ? 30 : 10, '#4a4a4a', 90);
       fx.wrecks.push({ x: e.x, y: e.y, vy: -30, rot: 0, boss: ev.boss, shape: enemyShape(state.stage), color: enemyColor(state.stage), life: 1.4 });
-      text('+' + fmt(ev.coins) + ' 🪙', e.x, e.y - u * 0.6, '#ffe066', ev.boss ? 20 : 15);
+      text('+' + fmt(ev.coins), e.x, e.y - u * 0.6, '#e9c877', ev.boss ? 20 : 15);
       shake = ev.boss ? 0.5 : 0.12;
     } else if (ev.t === 'bossFail') { enemyIn = 0; }
+    else if (ev.t === 'defeat') { enemyIn = 0; hurt = 1; shake = 0.5; burst(p.x, p.y, 40, '#e5687a', 220); burst(p.x, p.y, 20, '#3a3a3a', 100); }
   }
 
   const enemyShape = (stage) => ENEMY_SHAPES[Math.floor((stage - 1) / 5) % ENEMY_SHAPES.length];
@@ -86,39 +88,51 @@ export function createRenderer(canvas) {
     if (shake > 0) ctx.translate((Math.random() - 0.5) * shake * 14, (Math.random() - 0.5) * shake * 14);
 
     const g = ctx.createLinearGradient(0, 0, 0, h);
-    g.addColorStop(0, zone.top); g.addColorStop(1, zone.bottom);
+    g.addColorStop(0, zone.sky[0]); g.addColorStop(0.55, zone.sky[1]); g.addColorStop(1, zone.sky[2]);
     ctx.fillStyle = g; ctx.fillRect(-10, -10, w + 20, h + 20);
 
-    ctx.fillStyle = zone.sun; ctx.globalAlpha = 0.9;
-    ctx.beginPath(); ctx.arc(w * 0.82, h * 0.2, u * 0.45, 0, Math.PI * 2); ctx.fill();
-    ctx.globalAlpha = 0.18; ctx.beginPath(); ctx.arc(w * 0.82, h * 0.2, u * 0.8, 0, Math.PI * 2); ctx.fill();
-    ctx.globalAlpha = 1;
+    // sole con alone morbido
+    const sx = w * 0.8, sy = h * 0.3;
+    const glow = ctx.createRadialGradient(sx, sy, 0, sx, sy, u * 2.6);
+    glow.addColorStop(0, hexA(zone.sun, 0.55)); glow.addColorStop(0.25, hexA(zone.sun, 0.22)); glow.addColorStop(1, hexA(zone.sun, 0));
+    ctx.fillStyle = glow; ctx.fillRect(sx - u * 2.6, sy - u * 2.6, u * 5.2, u * 5.2);
+    ctx.fillStyle = zone.sun; ctx.beginPath(); ctx.arc(sx, sy, u * 0.24, 0, Math.PI * 2); ctx.fill();
 
+    // nuvole sfumate su tre piani
     for (const c of clouds) {
-      const speed = 0.02 + c.layer * 0.035;
-      c.x -= dt * speed; if (c.x < -0.25) { c.x = 1.2; c.y = 0.08 + Math.random() * 0.7; }
-      const cs = u * (0.5 + c.layer * 0.35) * c.s;
-      ctx.globalAlpha = 0.35 + c.layer * 0.2; ctx.fillStyle = zone.cloud;
-      ctx.beginPath();
-      ctx.ellipse(c.x * w, c.y * h, cs, cs * 0.34, 0, 0, Math.PI * 2);
-      ctx.ellipse(c.x * w - cs * 0.45, c.y * h + cs * 0.1, cs * 0.6, cs * 0.26, 0, 0, Math.PI * 2);
-      ctx.ellipse(c.x * w + cs * 0.4, c.y * h + cs * 0.08, cs * 0.55, cs * 0.24, 0, 0, Math.PI * 2);
-      ctx.fill();
+      c.x -= dt * (0.012 + c.layer * 0.022); if (c.x < -0.3) { c.x = 1.3; c.y = 0.12 + Math.random() * 0.6; }
+      const cs = u * (0.8 + c.layer * 0.5) * c.s, cx = c.x * w, cy = c.y * h;
+      ctx.globalAlpha = 0.16 + c.layer * 0.12;
+      for (const [ox, oy, k] of [[0, 0, 1], [-0.7, 0.12, 0.7], [0.65, 0.1, 0.75], [0.1, -0.18, 0.6]]) {
+        const r = cs * k, px = cx + ox * cs, py = cy + oy * cs * 0.6;
+        const cg = ctx.createRadialGradient(px, py, 0, px, py, r);
+        cg.addColorStop(0, zone.cloud); cg.addColorStop(1, hexA(zone.cloud, 0));
+        ctx.fillStyle = cg; ctx.save(); ctx.translate(px, py); ctx.scale(1, 0.42); ctx.translate(-px, -py);
+        ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+      }
     }
     ctx.globalAlpha = 1;
 
-    // colline in parallasse
-    for (let layer = 0; layer < 2; layer++) {
-      ctx.fillStyle = zone.hill; ctx.globalAlpha = layer ? 1 : 0.55;
-      const off = time * (layer ? 60 : 28), base = h * (layer ? 0.97 : 0.92), amp = h * (layer ? 0.05 : 0.08);
-      ctx.beginPath(); ctx.moveTo(0, h + 10);
-      for (let x = 0; x <= w + 12; x += 12) {
-        const k = (x + off) * (layer ? 0.012 : 0.007);
-        ctx.lineTo(x, base - amp * (Math.sin(k) * 0.6 + Math.sin(k * 2.3 + 1) * 0.4 + 1) * 0.5);
+    // rilievi lontani nella foschia
+    for (let layer = 0; layer < 3; layer++) {
+      const off = time * (10 + layer * 22), base = h * (0.9 + layer * 0.035), amp = h * (0.1 - layer * 0.02);
+      const hg = ctx.createLinearGradient(0, base - amp, 0, h);
+      hg.addColorStop(0, mix(zone.hill, zone.haze, 0.62 - layer * 0.28)); hg.addColorStop(1, mix(zone.hill, zone.haze, 0.3 - layer * 0.14));
+      ctx.fillStyle = hg;
+      ctx.beginPath(); ctx.moveTo(-10, h + 10);
+      for (let x = -10; x <= w + 12; x += 10) {
+        const k = (x + off) * (0.006 + layer * 0.004);
+        ctx.lineTo(x, base - amp * (Math.sin(k) * 0.55 + Math.sin(k * 2.7 + layer) * 0.3 + Math.sin(k * 0.4 + 2) * 0.15 + 1) * 0.5);
       }
       ctx.lineTo(w + 12, h + 10); ctx.fill();
     }
-    ctx.globalAlpha = 1;
+
+    // scie
+    const trail = playerPos();
+    const tg = ctx.createLinearGradient(trail.x - u * 2.4, 0, trail.x - u * 0.4, 0);
+    tg.addColorStop(0, 'rgba(255,255,255,0)'); tg.addColorStop(1, 'rgba(255,255,255,.28)');
+    ctx.strokeStyle = tg; ctx.lineWidth = 1.5; ctx.lineCap = 'round';
+    for (const dy of [-0.05, 0.07]) { ctx.beginPath(); ctx.moveTo(trail.x - u * 2.4, trail.y + u * dy + Math.sin(time * 2) * 2); ctx.lineTo(trail.x - u * 0.4, trail.y + u * dy); ctx.stroke(); }
 
     // gregari
     const p = playerPos();
@@ -136,6 +150,14 @@ export function createRenderer(canvas) {
       bullet({ x: pl._x + u * 0.25, y: pl._y }, { x: e.x + (Math.random() - 0.5) * u * 0.5, y: e.y + (Math.random() - 0.5) * u * 0.3 }, pl.color);
     }
 
+    // fuoco nemico
+    foeTimer -= dt; hurt = Math.max(0, hurt - dt * 1.5);
+    if (state.enemy && enemyIn >= 1 && foeTimer <= 0) {
+      foeTimer = state.enemy.boss ? 0.22 : 0.6;
+      const e = enemyPos();
+      bullet({ x: e.x - u * 0.45, y: e.y }, { x: p.x + (Math.random() - 0.3) * u * 0.6, y: p.y + (Math.random() - 0.5) * u * 0.3 }, '#ff8f9c');
+    }
+
     // giocatore
     const plane = AIRCRAFT.find((a) => a.id === state.aircraft.equipped);
     drawPlane(ctx, plane.shape, plane.color, p.x - (recoil > 0 ? 2 : 0), p.y, u, time, 1);
@@ -144,7 +166,7 @@ export function createRenderer(canvas) {
     if (state.enemy) {
       const e = enemyPos(), boss = state.enemy.boss;
       const ex = e.x + (enemyHit > 0 ? 3 : 0);
-      if (boss) drawPlane(ctx, 'bomber', '#7f1d1d', ex, e.y, u * 1.9, time, -1, enemyHit > 0.06);
+      if (boss) drawPlane(ctx, 'bomber', '#6e2530', ex, e.y, u * 1.9, time, -1, enemyHit > 0.06);
       else drawPlane(ctx, enemyShape(state.stage), enemyColor(state.stage), ex, e.y, u * 0.95, time, -1, enemyHit > 0.06);
     }
 
@@ -163,7 +185,9 @@ export function createRenderer(canvas) {
       b.p += dt * (b.rocket ? 5 : 9);
       const x = b.x0 + (b.x1 - b.x0) * b.p, y = b.y0 + (b.y1 - b.y0) * b.p;
       const tx = b.x0 + (b.x1 - b.x0) * Math.max(0, b.p - 0.25), ty = b.y0 + (b.y1 - b.y0) * Math.max(0, b.p - 0.25);
-      ctx.strokeStyle = b.color; ctx.lineWidth = b.rocket ? 4 : 2; ctx.lineCap = 'round';
+      const bg = ctx.createLinearGradient(tx, ty, x, y);
+      bg.addColorStop(0, hexA(b.color, 0)); bg.addColorStop(1, b.color);
+      ctx.strokeStyle = bg; ctx.lineWidth = b.rocket ? 3 : 1.6; ctx.lineCap = 'round';
       ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(x, y); ctx.stroke();
     }
     fx.bullets = fx.bullets.filter((b) => b.p < 1);
@@ -171,7 +195,7 @@ export function createRenderer(canvas) {
     for (const s of fx.sparks) {
       s.life -= dt; s.x += s.vx * dt; s.y += s.vy * dt; s.vy += 160 * dt;
       ctx.globalAlpha = Math.max(0, s.life * 2); ctx.fillStyle = s.color;
-      ctx.fillRect(s.x - 2, s.y - 2, 4, 4);
+      ctx.beginPath(); ctx.arc(s.x, s.y, 1.2 + s.life * 2.5, 0, Math.PI * 2); ctx.fill();
     }
     fx.sparks = fx.sparks.filter((s) => s.life > 0);
     ctx.globalAlpha = 1;
@@ -180,13 +204,19 @@ export function createRenderer(canvas) {
     for (const tx of fx.texts) {
       tx.life -= dt; tx.x += tx.vx * dt; tx.y += tx.vy * dt;
       ctx.globalAlpha = Math.max(0, Math.min(1, tx.life * 2.5));
-      ctx.font = `800 ${tx.size}px system-ui, sans-serif`;
-      ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,.55)'; ctx.strokeText(tx.str, tx.x, tx.y);
+      ctx.font = `700 ${tx.size}px "Barlow Condensed", system-ui, sans-serif`;
+      ctx.lineWidth = 2.5; ctx.strokeStyle = 'rgba(8,14,26,.6)'; ctx.strokeText(tx.str, tx.x, tx.y);
       ctx.fillStyle = tx.color; ctx.fillText(tx.str, tx.x, tx.y);
     }
     fx.texts = fx.texts.filter((x) => x.life > 0);
     ctx.globalAlpha = 1;
     ctx.restore();
+
+    // vignetta; rossa quando la squadriglia è in pericolo
+    const max = squadMaxHp(state), danger = Math.max(hurt, state.hp > 0 && state.hp / max < 0.3 ? 0.5 + 0.2 * Math.sin(time * 6) : 0);
+    const vg = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.45, w / 2, h / 2, Math.max(w, h) * 0.75);
+    vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, danger ? `rgba(200,50,70,${0.45 * danger})` : 'rgba(6,10,20,.38)');
+    ctx.fillStyle = vg; ctx.fillRect(0, 0, w, h);
   }
 
   resize();
@@ -199,7 +229,10 @@ export function createRenderer(canvas) {
 export function drawPlane(ctx, shape, color, x, y, size, t = 0, dir = 1, flash = false) {
   const s = size / 100;
   ctx.save(); ctx.translate(x, y); ctx.scale(s * dir, s);
-  const body = flash ? '#ffffff' : color, dark = flash ? '#ffffff' : shade(color, -0.35), light = flash ? '#ffffff' : shade(color, 0.3);
+  ctx.shadowColor = 'rgba(6,10,20,.35)'; ctx.shadowBlur = 10 * s; ctx.shadowOffsetY = 5 * s;
+  const lg = ctx.createLinearGradient(0, -12, 0, 12);
+  lg.addColorStop(0, shade(color, 0.28)); lg.addColorStop(0.55, color); lg.addColorStop(1, shade(color, -0.3));
+  const body = flash ? '#ffffff' : lg, dark = flash ? '#ffffff' : shade(color, -0.42), light = flash ? '#ffffff' : 'rgba(255,255,255,.22)';
   const prop = shape !== 'jet' && shape !== 'stealth';
   ctx.lineJoin = 'round';
 
@@ -207,14 +240,14 @@ export function drawPlane(ctx, shape, color, x, y, size, t = 0, dir = 1, flash =
     flame(ctx, -46, 2, t);
     poly(ctx, dark, [[-48, 2], [-20, -10], [20, -8], [52, 2], [10, 9], [-30, 9]]);
     poly(ctx, body, [[-40, 3], [-6, -6], [30, -3], [52, 2], [8, 6]]);
-    poly(ctx, '#9bd4ff', [[8, -6], [24, -5], [30, -1], [12, -1]]);
+    poly(ctx, '#bfe3f5', [[8, -6], [24, -5], [30, -1], [12, -1]]);
     poly(ctx, dark, [[-44, 0], [-34, -16], [-24, -8]]);
   } else if (shape === 'jet') {
     flame(ctx, -50, 0, t);
     poly(ctx, dark, [[-10, 2], [-34, 20], [-22, 20], [14, 4]]);
     poly(ctx, body, [[-50, -5], [20, -8], [54, 0], [20, 7], [-50, 5]]);
     poly(ctx, light, [[-50, -5], [20, -8], [40, -4], [-50, -1]]);
-    poly(ctx, '#9bd4ff', [[10, -8], [22, -13], [34, -6], [30, -4]]);
+    poly(ctx, '#bfe3f5', [[10, -8], [22, -13], [34, -6], [30, -4]]);
     poly(ctx, dark, [[-48, -4], [-40, -24], [-30, -24], [-24, -6]]);
   } else if (shape === 'bomber') {
     poly(ctx, dark, [[-8, 4], [-30, 18], [-12, 18], [16, 6]]);
@@ -236,7 +269,7 @@ export function drawPlane(ctx, shape, color, x, y, size, t = 0, dir = 1, flash =
     ctx.quadraticCurveTo(len, 0, len - 10, fat - 1); ctx.quadraticCurveTo(-10, fat + 1, -len, 2); ctx.closePath(); ctx.fill();
     ctx.fillStyle = light; ctx.beginPath();
     ctx.moveTo(-len + 6, -3); ctx.quadraticCurveTo(-10, -fat - 1, len - 12, -fat + 2); ctx.lineTo(len - 14, -2); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = '#9bd4ff'; ctx.beginPath(); ctx.ellipse(shape === 'fighter' ? 2 : 6, -fat + 0.5, shape === 'fighter' ? 11 : 7, 4.5, 0, Math.PI, 0); ctx.fill();
+    ctx.fillStyle = '#bfe3f5'; ctx.beginPath(); ctx.ellipse(shape === 'fighter' ? 2 : 6, -fat + 0.5, shape === 'fighter' ? 11 : 7, 4.5, 0, Math.PI, 0); ctx.fill();
     if (shape === 'biplane') {
       ctx.strokeStyle = '#3b2f2f'; ctx.lineWidth = 1.6;
       for (const sx of [-2, 22]) { ctx.beginPath(); ctx.moveTo(sx, -19); ctx.lineTo(sx + 2, 9); ctx.stroke(); }
@@ -275,4 +308,14 @@ function shade(hex, amt) {
   const n = parseInt(hex.slice(1), 16);
   const ch = (v) => Math.max(0, Math.min(255, Math.round(amt < 0 ? v * (1 + amt) : v + (255 - v) * amt)));
   return `rgb(${ch(n >> 16)},${ch((n >> 8) & 255)},${ch(n & 255)})`;
+}
+
+function hexA(hex, a) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`;
+}
+function mix(a, b, k) {
+  const x = parseInt(a.slice(1), 16), y = parseInt(b.slice(1), 16);
+  const ch = (sh) => Math.round(((x >> sh) & 255) * (1 - k) + ((y >> sh) & 255) * k);
+  return `rgb(${ch(16)},${ch(8)},${ch(0)})`;
 }

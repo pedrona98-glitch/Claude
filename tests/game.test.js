@@ -65,7 +65,7 @@ test('acquisti in blocco: il costo coincide con la somma dei singoli', () => {
 });
 
 test('boss fallito: si torna allo stage precedente in farming', () => {
-  const s = G.newState(); s.stage = 5;
+  const s = G.newState(); s.stage = 5; s.up.armor = 40;
   const ev = [];
   for (let i = 0; i < 400; i++) G.tick(s, 0.1, 1e12, ev);
   assert.ok(ev.some((e) => e.t === 'bossFail'));
@@ -99,4 +99,19 @@ test('offline, boost, premio giornaliero, prodotti, salvataggio', () => {
 test('formattazione numeri', () => {
   assert.equal(fmt(999), '999'); assert.equal(fmt(1500), '1.50K'); assert.equal(fmt(999999), '1.00M');
   assert.equal(fmt(1e15), '1.00aa'); assert.equal(fmtTime(3725), '1h 02m'); assert.equal(fmtTime(75), '1m 15s');
+});
+
+test('vita della squadriglia: si ricarica a ogni missione, alla sconfitta si arretra', () => {
+  const s = G.newState(); s.stage = 12; s.up.cannon = 1;
+  const ev = [];
+  for (let i = 0; i < 600 && !ev.some((e) => e.t === 'defeat'); i++) G.tick(s, 0.1, 1e12, ev);
+  assert.ok(ev.some((e) => e.t === 'defeat'));
+  assert.equal(s.stage, 11); assert.ok(s.farming); assert.equal(s.hp, G.squadMaxHp(s));
+  const strong = G.newState(); strong.up.cannon = 60; strong.up.armor = 60;
+  G.tick(strong, 0.1, 1e12); G.tick(strong, 0.1, 1e12);
+  assert.ok(strong.hp < G.squadMaxHp(strong));
+  for (let i = 0; i < 100 && strong.stage === 1; i++) G.tick(strong, 0.1, 1e12);
+  assert.equal(strong.stage, 2); assert.equal(strong.hp, G.squadMaxHp(strong));
+  assert.ok(G.power(strong) > G.power(G.newState()));
+  const old = G.loadState({ up: { cannon: 5 } }); assert.equal(old.up.armor, 1);
 });

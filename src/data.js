@@ -9,11 +9,12 @@ export const BOOST_MAX_SECONDS = 2 * 3600;
 
 // Potenziamenti dell'aereo del giocatore (si comprano con le monete).
 export const UPGRADES = [
-  { id: 'cannon', icon: '🔫', baseCost: 10, growth: 1.08, max: Infinity },
-  { id: 'rate', icon: '⚡', baseCost: 60, growth: 1.32, max: 40 },
-  { id: 'crit', icon: '🎯', baseCost: 120, growth: 1.36, max: 45 },
-  { id: 'critDmg', icon: '💥', baseCost: 250, growth: 1.3, max: 80 },
-  { id: 'cargo', icon: '📦', baseCost: 180, growth: 1.27, max: 200 },
+  { id: 'cannon', icon: 'gun', baseCost: 10, growth: 1.08, max: Infinity },
+  { id: 'armor', icon: 'armor', baseCost: 12, growth: 1.08, max: Infinity },
+  { id: 'rate', icon: 'bolt', baseCost: 60, growth: 1.32, max: 40 },
+  { id: 'crit', icon: 'target', baseCost: 120, growth: 1.36, max: 45 },
+  { id: 'critDmg', icon: 'burst', baseCost: 250, growth: 1.3, max: 80 },
+  { id: 'cargo', icon: 'crate', baseCost: 180, growth: 1.27, max: 200 },
 ];
 
 // Gregari: la squadriglia che fa danno automatico.
@@ -39,10 +40,10 @@ export const AIRCRAFT = [
 
 // Talenti permanenti (si comprano con le medaglie).
 export const TALENTS = [
-  { id: 'loot', icon: '💰', max: 20, cost: (l) => 2 * (l + 1) },
-  { id: 'fuel', icon: '⛽', max: 6, cost: (l) => 3 * (l + 1) },
-  { id: 'start', icon: '🛫', max: 10, cost: (l) => 5 * (l + 1) },
-  { id: 'clock', icon: '⏱️', max: 6, cost: (l) => 4 * (l + 1) },
+  { id: 'loot', icon: 'coin', max: 20, cost: (l) => 2 * (l + 1) },
+  { id: 'fuel', icon: 'fuel', max: 6, cost: (l) => 3 * (l + 1) },
+  { id: 'start', icon: 'takeoff', max: 10, cost: (l) => 5 * (l + 1) },
+  { id: 'clock', icon: 'clock', max: 6, cost: (l) => 4 * (l + 1) },
 ];
 
 // Missioni: stat = chiave in state.stats, ricompensa in gemme.
@@ -66,13 +67,13 @@ export const DAILY_GEMS = [5, 5, 10, 10, 15, 15, 30];
 
 // Prodotti in-app. Gli id devono coincidere con quelli creati su App Store Connect / Google Play.
 export const PRODUCTS = [
-  { id: 'starter_pack', icon: '🎁', price: '1,99 €', gems: 300, boost: 1800, once: true },
-  { id: 'gems_80', icon: '💎', price: '0,99 €', gems: 80 },
-  { id: 'gems_500', icon: '💎', price: '4,99 €', gems: 500 },
-  { id: 'gems_1200', icon: '💎', price: '9,99 €', gems: 1200 },
-  { id: 'gems_3000', icon: '💎', price: '19,99 €', gems: 3000 },
-  { id: 'double_coins', icon: '🪙', price: '4,99 €', perk: 'doubleCoins', once: true },
-  { id: 'remove_ads', icon: '🚫', price: '3,99 €', perk: 'noAds', once: true },
+  { id: 'starter_pack', icon: 'gift', price: '1,99 €', gems: 300, boost: 1800, once: true },
+  { id: 'gems_80', icon: 'gem', price: '0,99 €', gems: 80 },
+  { id: 'gems_500', icon: 'gem', price: '4,99 €', gems: 500 },
+  { id: 'gems_1200', icon: 'gem', price: '9,99 €', gems: 1200 },
+  { id: 'gems_3000', icon: 'gem', price: '19,99 €', gems: 3000 },
+  { id: 'double_coins', icon: 'coin', price: '4,99 €', perk: 'doubleCoins', once: true },
+  { id: 'remove_ads', icon: 'noads', price: '3,99 €', perk: 'noAds', once: true },
 ];
 
 export const AD_GEMS = 5;
@@ -81,3 +82,11 @@ export const AD_BOOST_SECONDS = 15 * 60;
 export const WARP_GEMS = 25;
 export const WARP_SECONDS = 2 * 3600;
 export const DROP_INTERVAL = [70, 130]; // secondi tra un rifornimento aereo e l'altro
+
+// Arena: leghe in base ai trofei.
+export const LEAGUES = [
+  { id: 'bronze', min: 0 }, { id: 'silver', min: 1100 }, { id: 'gold', min: 1250 },
+  { id: 'platinum', min: 1400 }, { id: 'diamond', min: 1600 }, { id: 'legend', min: 1850 },
+];
+export const ALLIANCE_CREATE_GEMS = 50;
+export const ALLIANCE_BONUS_PER_LEVEL = 0.02;

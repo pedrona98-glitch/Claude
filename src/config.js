@@ -1,6 +1,9 @@
 // Configurazione di pubblicazione. Sostituisci i valori "TEST"/"REPLACE" prima del rilascio.
 // Gli ID AdMob qui sotto sono gli ID di TEST ufficiali di Google: non generano ricavi.
 export const CONFIG = {
+  // Indirizzo del server online (server/index.js), es. 'https://tuo-server.example.com'.
+  // Vuoto = modalità demo: arena, alleanze e chat girano sul telefono con giocatori simulati.
+  serverUrl: '',
   admob: {
     testMode: true, // metti false SOLO con i tuoi ID reali
     rewarded: {
