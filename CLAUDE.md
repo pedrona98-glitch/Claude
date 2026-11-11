@@ -13,6 +13,9 @@ acquisti in-app. Il proprietario scrive in italiano: rispondi in italiano.
 - Pubblicità AdMob e acquisti RevenueCat in `src/monetization.js`; nel browser sono simulati.
 - Dettagli completi, monetizzazione e passi di pubblicazione nel `README.md`.
 
+## Ambiente
+Si sviluppa su Windows (PowerShell). Il proprietario ha anche un Mac, da usare solo per la build iOS.
+
 ## Comandi
 - `npm run dev` gioco nel browser · `npm test` test · `npm run build` build in `dist/`
 - `npm run server` server online in locale · `npm run simulate` ritmo di gioco su 72 ore
@@ -27,7 +30,8 @@ acquisti in-app. Il proprietario scrive in italiano: rispondi in italiano.
 ## A che punto siamo
 Fatto e provato nel browser: officina, missioni, manovre, droni, emblemi, ricerca, dungeon, Pass, negozio,
 arena, alleanze, guerra e chat (demo). Da fare, in ordine:
-1. Generare i progetti nativi e provare il gioco su simulatore e telefono (iOS da Xcode, Android da Android Studio).
+1. Generare i progetti nativi e provare il gioco su telefono: Android da Android Studio su Windows, dove si
+   sviluppa; iOS solo dal Mac del proprietario con Xcode (su Windows non si può compilare per iOS).
 2. Creare app e unità "con premio" su AdMob, prodotti su App Store Connect e Google Play, collegarli a
    RevenueCat, inserire ID e chiavi in `src/config.js` e provare pubblicità e acquisti sul dispositivo.
 3. Mettere in rete il server e impostare `serverUrl`; prima del lancio servono strumenti di moderazione della
