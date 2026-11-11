@@ -64,6 +64,9 @@ npm install
 npm run dev      # gioco nel browser su http://localhost:5173
 npm test         # test della logica e del bilanciamento
 npm run build    # build di produzione in dist/
+npm run server   # server online in locale (porta 8787)
+npm run preview:file  # anteprima in un unico file: dist-preview/sky-squadron-idle.html
+npm run simulate      # simula 72 ore di gioco per controllare il ritmo
 ```
 
 Nel browser non esiste uno store: i video diventano un conto alla rovescia di prova e gli acquisti una finestra
