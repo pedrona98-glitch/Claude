@@ -1,0 +1,7 @@
+{
+  "appId": "com.example.skysquadronidle",
+  "appName": "Sky Squadron Idle",
+  "webDir": "dist",
+  "backgroundColor": "#101a2e",
+  "android": { "allowMixedContent": false }
+}
