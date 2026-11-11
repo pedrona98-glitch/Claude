@@ -9,41 +9,35 @@ Il gioco è una web app (Vite, JavaScript senza framework, grafica su canvas) im
 
 ## Come si gioca
 
-I meccanismi seguono quelli di **Forge Master: Idle RPG**, ricostruiti dalle guide e dalle tabelle pubblicate
-dalla community (ForgeMaster Helper, aggiornamento 31/12/2025): probabilità della forgia per livello, costi e
-tempi dei potenziamenti, rarità di casse, manovre ed emblemi, tempi della ricerca, leghe e guerra tra clan.
-Nomi, grafica e tema sono nostri (aviazione); le corrispondenze sono indicate tra parentesi.
+Idle RPG "a officina": si costruiscono pezzi casuali per l'aereo, si tengono i migliori e si avanza finché il
+livello dell'officina lo permette. Regole, curve di probabilità, tempi, costi e premi sono progettati per questo
+gioco e generati da formule proprie (`src/tables.js`).
 
-- **Officina** (forgia): ogni chiave inglese (martello) costruisce un pezzo a caso per uno degli 8 posti
-  dell'aereo: 4 danno, 4 vita. Il pezzo ha un livello e un'epoca tra 10 (Pionieri … Mitica, come Primitive …
-  Divine); dall'epoca 1 ha statistiche secondarie (cadenza, critico, danno critico, doppio colpo, assorbimento,
-  rigenerazione, parata, danno e ricarica delle manovre). Si monta o si vende per monete; la vendita è la fonte
-  principale di monete, come nell'originale.
-- **Livello dell'officina**: 35 livelli con le probabilità delle epoche dell'originale. Si paga a rate (fino a
-  10) e poi richiede tempo reale: 5 minuti per il livello 2, 7 ore e mezza per il 7, giorni più avanti. Video per
-  -30 minuti, gemme per finire subito.
-- **Costruzione automatica** dalla missione 2-10, si ferma quando esce un pezzo da un'epoca scelta. Costruzione
-  doppia e tripla alle missioni 5-15 e 7-15.
-- **Missioni** a capitoli di 20 (1-1 … 1-20), tre ondate per missione, boss a tempo all'ultima. La vita della
-  squadriglia si ricarica a ogni missione; se finisce si arretra di una missione.
-- **Manovre** (abilità), dalla 2-15: 12 abilità attive in 6 rarità, reclutate con i piani di volo. Fino a 4 posti,
-  lancio automatico o manuale, livello di reclutamento che migliora le rarità (tabella dell'originale).
-- **Droni di scorta** (animali), dalla 3-1: escono dalle casse con tempi di consegna da 30 minuti a 32 ore. I
-  doppioni si fondono e salgono di livello. Fino a 3 posti.
-- **Emblemi** (cavalcature), dalla 4-15: +10% … +400% a danno e vita per rarità, dipinti con la vernice.
-- **Ricerca** (albero tecnologico): 24 nodi in tre rami (officina, potenza, squadra), 25 livelli ciascuno in 5
-  gradi sbloccati dalle missioni, con i tempi e i costi in progetti dell'originale.
-- **Dungeon**: Assalto al deposito (chiavi inglesi e monete, 2-10), Base fantasma (piani di volo, 2-15),
-  Invasione (casse, 3-1), Sciame (progetti, 4-1). Due chiavi al giorno, usate solo se si vince, livelli 1-1 …
-  10-10 e combattimento rapido sull'ultimo livello superato.
-- **Arena** dalla 3-10: lega settimanale con gironi da 100 piloti dello stesso server, da Senza lega a Diamante,
-  promozioni e retrocessioni e premi con le soglie dell'originale. Stagione martedì-domenica, lunedì di pausa,
-  biglietti giornalieri che non si accumulano.
-- **Alleanze** dalla 4-15, fino a 50 piloti, 24 ore di attesa dopo l'uscita. **Guerra settimanale** contro
-  un'alleanza rivale: ogni giorno conta un tipo di azione (martedì forgia e ricerca, mercoledì monete spese,
-  dungeon e casse, …, domenica attacchi ai piloti rivali) e vale da 1 a 5 punti. Le fasce S/A/B/C decidono i premi.
+- **Officina**: ogni chiave inglese costruisce un pezzo a caso per uno degli 8 posti dell'aereo (4 danno, 4 vita),
+  con un livello e un'epoca tra 10 (Pionieri … Mitica). Dall'epoca 1 ha statistiche secondarie: cadenza,
+  critico, danno critico, doppio colpo, assorbimento, rigenerazione, parata, danno e ricarica delle manovre.
+  Si monta o si vende per monete.
+- **Livello dell'officina**: 40 livelli. Ogni livello sposta le probabilità verso epoche più recenti. Il
+  potenziamento costa monete, dal livello 10 a rate, e richiede tempo reale (4 minuti per il livello 2, circa
+  un'ora per il 9, giorni più avanti). Video per -30 minuti, gemme per finire subito.
+- **Costruzione automatica** dalla missione 2-5, si ferma quando esce un pezzo da un'epoca scelta. Costruzione
+  doppia e tripla alle missioni 5-18 e 7-12.
+- **Missioni** a capitoli di 20, tre ondate per missione, boss a tempo all'ultima. La vita della squadriglia si
+  ricarica a ogni missione; se finisce si arretra di una missione.
+- **Manovre**, dalla 2-12: 12 abilità attive in 6 rarità, reclutate con i piani di volo; fino a 4 posti.
+- **Droni di scorta**, dalla 3-3: tre ruoli (attacco, equilibrio, scudo), consegnati in casse da 20 minuti a
+  24 ore; i doppioni si fondono. Fino a 3 posti.
+- **Emblemi** dipinti sulla fusoliera, dalla 5-3: da +8% a +350% a danno e vita.
+- **Ricerca**: 24 nodi in tre rami (officina, potenza, squadra), 25 livelli ciascuno in 5 gradi.
+- **Dungeon**: Assalto al deposito (chiavi inglesi e monete), Base fantasma (piani di volo), Invasione (casse),
+  Sciame (progetti). Tre chiavi al giorno, usate solo se si vince, e combattimento rapido sull'ultimo livello.
+- **Arena** dalla 3-12: lega settimanale in gironi da 50 piloti dello stesso server, sei leghe da Cadetti a
+  Leggende. Stagione lunedì-sabato, domenica premi, promozioni e retrocessioni; 6 biglietti al giorno.
+- **Alleanze** dalla 4-18, fino a 30 piloti. **Guerra settimanale** contro un'alleanza rivale: lunedì
+  costruzioni e manovre, martedì dungeon e casse, mercoledì ricerca ed emblemi, giovedì officina e fusioni,
+  venerdì costruzioni, casse ed emblemi, sabato assalto ai piloti rivali. Fasce Oro, Argento e Bronzo.
 - **Chat** globale del server e dell'alleanza; **server** assegnati per data d'iscrizione.
-- **Guadagni offline** fino a 4 ore, premio giornaliero, obiettivi, **Pass di volo** di 30 gradi con fila Premium.
+- **Guadagni offline** fino a 6 ore, premio giornaliero, obiettivi, **Pass di volo** di 30 gradi con fila Premium.
 
 ## Monetizzazione
 
@@ -59,7 +53,7 @@ Nomi, grafica e tema sono nostri (aviazione); le corrispondenze sono indicate tr
 | Acquisto | \`starter_pack\` | 300 gemme + 500 chiavi inglesi, una volta sola |
 | Acquisto | \`remove_ads\` | Tutti i premi video senza guardare annunci (non consumabile) |
 
-Come nell'originale, la leva principale sono i **timer** (officina, ricerca, casse) e il **Pass Premium**.
+La leva principale sono i **timer** (officina, ricerca, casse) e il **Pass Premium**.
 Non ci sono annunci forzati; un banner è previsto ma spento (\`banner.enabled\` in \`src/config.js\`).
 Il Pass Premium va creato sugli store come prodotto consumabile e venduto una volta per stagione.
 
@@ -99,7 +93,7 @@ Come funziona il server:
 - **Dati**: tutto in memoria, salvato su `server-data/world.json` ogni 30 secondi e alla chiusura. Va bene per
   il lancio; con molte migliaia di giocatori attivi conviene passare a un database.
 - **Avversari d'addestramento**: se un girone ha pochi giocatori l'arena si completa con bot, indicati come tali.
-- **Settimana di gioco**: lega e guerra partono il martedì alle 00:00 UTC; il lunedì si chiudono stagione e
+- **Settimana di gioco**: lega e guerra partono il lunedì alle 00:00 UTC; la domenica si chiudono stagione e
   guerra, e i premi arrivano al primo accesso successivo.
 - **Hosting**: qualsiasi servizio che esegua Node 20+ con un disco persistente (variabili `PORT` e `DATA_DIR`).
 
@@ -143,10 +137,16 @@ personali un test chiuso con più tester prima del rilascio pubblico.
 
 Provato nel browser in emulazione telefono: officina con rate e probabilità, costruzione automatica, missioni e
 ondate, manovre, droni e casse, emblemi, ricerca, dungeon, Pass, negozio, salvataggio, arena, alleanza, guerra
-e chat in modalità demo. Le regole sono coperte da test automatici (`npm test`) e il ritmo è stato verificato
-con una simulazione di 72 ore di gioco: missione 4-9 dopo 24 ore e 5-16 dopo 48, vicino al riferimento
-dell'originale ("4-15 in un giorno con una buona configurazione").
+e chat in modalità demo. Le regole sono coperte da test automatici (`npm test`) e il ritmo è stato verificato con
+una simulazione di 72 ore di gioco continuo (missione 3-12 dopo un'ora, 6-10 dopo un giorno).
 
 Non ancora fatto: server messo in rete e provato con giocatori veri; integrazione nativa con AdMob e RevenueCat
-eseguita su un dispositivo (segue le API dei plugin installati, va verificata con gli ID di test). I numeri di
-stage, danni dei nemici e premi delle nostre risorse sono nostri: le guide pubbliche non li riportano.
+eseguita su un dispositivo (segue le API dei plugin installati, va verificata con gli ID di test).
+
+## Originalità
+
+Il genere (idle RPG con costruzione casuale di equipaggiamento) è diffuso e le meccaniche di gioco in sé non sono
+protette dal diritto d'autore; lo sono invece nomi, grafica, testi, musiche, livelli e dati specifici di un altro
+gioco. Per questo tutto ciò che è in questo repository è originale: tema aviazione, nomi, icone e grafica
+disegnati nel codice, testi, e numeri di bilanciamento generati da formule proprie. Prima di pubblicare
+conviene comunque far controllare nome, icona e schede degli store da un legale o da un consulente.

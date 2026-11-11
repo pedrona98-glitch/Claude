@@ -136,7 +136,8 @@ export function createOnlineUI(kit) {
   const planeOf = (p) => kit.planeIcon(p.plane in SHAPE_COLORS ? p.plane : 'biplane', SHAPE_COLORS[p.plane] || SHAPE_COLORS.biplane);
   const loading = () => kit.panel.append(el('p', 'hint center', '···'));
   const leagueName = (i) => t('lg_' + LEAGUE_IDS[i]);
-  const tierName = (i) => (i >= 0 ? CLAN_TIERS[i][0] : 'D');
+  const tierId = (i) => (i >= 0 ? CLAN_TIERS[i][0] : 'none');
+  const tierName = (i) => t('ct_' + tierId(i));
 
   /** Testo sul pulsante laterale: tempo rimasto alla stagione / alla guerra. */
   function sideInfo(arenaBtn, warBtn, n) {
@@ -163,7 +164,7 @@ export function createOnlineUI(kit) {
     head.append(html('div', 'league lg-' + LEAGUE_IDS[lg.league], ic('trophy')), info);
     const zone = el('div', 'sub');
     const [up, down] = lg.move;
-    zone.textContent = [up ? t('zone_up', up) : '', down <= 100 ? t('zone_down', down) : ''].filter(Boolean).join(' · ') || t('zone_none');
+    zone.textContent = [up ? t('zone_up', up) : '', down <= 50 ? t('zone_down', down) : ''].filter(Boolean).join(' · ') || t('zone_none');
     const timer = el('div', 'sub');
     kit.addUpdater(() => {
       const left = Math.max(0, (lg.week.endsAt - now()) / 1000);
@@ -215,7 +216,7 @@ export function createOnlineUI(kit) {
     const c = clan.clan, w = clan.war;
     const card = el('div', 'card'), head = el('div', 'card-head'), info = el('div', 'info');
     info.append(el('div', 'name', `[${c.tag}] ${c.name}`), el('div', 'sub', `${t('tier_n_clan', tierName(c.tier), c.tp)} · ${t('members_n', c.members.length, c.max)}`));
-    head.append(html('div', 'league tier-' + tierName(c.tier), `<b>${tierName(c.tier)}</b>`), info);
+    head.append(html('div', 'league tier-' + tierId(c.tier), ic('shield')), info);
     const actions = el('div', 'btn-row');
     const chat = html('button', 'btn ghost', withIcon('chat', t('chat'))); chat.onclick = () => openChat('alliance');
     actions.append(chat);
@@ -291,7 +292,7 @@ export function createOnlineUI(kit) {
     const tag = demoTag(); if (tag) kit.panel.append(tag);
     for (const a of clanList) {
       const x = row({ icon: 'shield', title: `[${a.tag}] ${a.name}` });
-      x.sub.textContent = `${t('tier_n_clan', tierName(a.tier), '')} · ${t('members_n', a.members, a.max)} · ${t('power')} ${fmt(a.power)}`.replace(' ()', '');
+      x.sub.textContent = `${tierName(a.tier)} · ${t('members_n', a.members, a.max)} · ${t('power')} ${fmt(a.power)}`;
       setBtn(x, t('join'), '', a.members < a.max);
       x.btn.onclick = async () => {
         const r = await call('clan.join', { id: a.id });

@@ -1,11 +1,11 @@
 // Logica di gioco pura: nessun accesso a DOM o storage, così è testabile con Node.
 import {
   STAGES_PER_CHAPTER, WAVES, BOSS_TIME, OFFLINE_HOURS, DAILY_KEYS, SELL_BASE, START_WRENCHES, UNLOCKS,
-  AGES, AGE_MULT, SLOTS, SUBSTATS, RARITIES, DRONES, DRONE_SCALE, DRONE_MAX_LEVEL, CRATE_SECONDS,
-  EMBLEMS, EMBLEM_BOOST, EMBLEM_COST, MANEUVERS, MANEUVER_LEVEL_STEP, MANEUVER_MAX_LEVEL, TECH, TECH_TIER_UNLOCK,
+  AGES, AGE_MULT, SLOTS, SUBSTATS, RARITIES, DRONES, DRONE_MAX_LEVEL, CRATE_SECONDS,
+  EMBLEMS, EMBLEM_BOOST, EMBLEM_COST, MANEUVERS, MANEUVER_MAX_LEVEL, TECH, TECH_TIER_UNLOCK,
   DUNGEONS, MISSIONS, DAILY_GEMS, PASS_TIERS, PASS_XP, PASS_DAYS, AD_REWARDS,
 } from './data.js';
-import { FORGE_ODDS, FORGE_UPGRADES, TECH_COSTS, CRATE_RATES, MANEUVER_RATES, EMBLEM_RATES } from './tables.js';
+import { FORGE_ODDS, FORGE_UPGRADES, TECH_COSTS, CRATE_RATES, MANEUVER_RATES, EMBLEM_RATES, recruitStep } from './tables.js';
 
 export const SAVE_VERSION = 3;
 const SPAWN_DELAY = 0.3;
@@ -107,7 +107,7 @@ export const techPct = (s, id) => techLv(s, id) * TECHN[id].v;
 export const maxPartLevel = (s) => 5 + 3 * s.forge.level + 2 * techLv(s, 'partLevel');
 export const forgeOdds = (level) => FORGE_ODDS[Math.min(FORGE_ODDS.length, level) - 1];
 export const partMain = (p) => SLOT[p.slot].base * Math.pow(AGE_MULT, p.age) * Math.pow(1.06, p.lvl - 1);
-export const partSell = (s, p) => Math.round(SELL_BASE * Math.pow(1.01, p.lvl - 1) * (1 + techPct(s, 'sellPrice') / 100));
+export const partSell = (s, p) => Math.round(SELL_BASE * Math.pow(1.015, p.lvl - 1) * (1 + techPct(s, 'sellPrice') / 100));
 export const partStat = (p) => SLOT[p.slot].stat;
 
 function pick(weights, rnd) {
@@ -227,7 +227,7 @@ export function subTotals(s) {
   return t;
 }
 export function droneStats(s, id) {
-  const d = DRONE[id], lvl = s.drones.own[id] || 1, k = DRONE_SCALE * (1 + 0.1 * (lvl - 1));
+  const d = DRONE[id], lvl = s.drones.own[id] || 1, k = 1 + 0.1 * (lvl - 1);
   return { dmg: d.dmg * k * (1 + techPct(s, 'droneAtk') / 100), hp: d.hp * k * (1 + techPct(s, 'droneHp') / 100) };
 }
 export function emblemBoost(s, id = s.emblems.eq) {
@@ -417,7 +417,7 @@ export function dungeonFight(s, id, level) {
   return { win, myLeft: win ? Math.max(0, 1 - (net > 0 ? tKill * net / st.hp : 0)) : 0, foeLeft: win ? 0 : Math.max(0, 1 - Math.min(tDie, 60) / tKill) };
 }
 export function dungeonReward(s, id, level, rnd = Math.random) {
-  if (id === 'thief') return { wrenches: Math.round((60 + 15 * (level - 1)) * (1 + techPct(s, 'thiefWrench') / 100)), coins: Math.round(500 * Math.pow(1.06, level - 1) * (1 + techPct(s, 'thiefCoin') / 100)) };
+  if (id === 'thief') return { wrenches: Math.round((50 + 14 * (level - 1)) * (1 + techPct(s, 'thiefWrench') / 100)), coins: Math.round(500 * Math.pow(1.06, level - 1) * (1 + techPct(s, 'thiefCoin') / 100)) };
   if (id === 'ghost') return { plans: Math.round((5 + Math.floor((level - 1) / 3)) * (1 + techPct(s, 'planBonus') / 100)) };
   if (id === 'swarm') return { blueprints: 60 + 12 * (level - 1) };
   const n = 1 + (level >= 30 ? 1 : 0) + (level >= 70 ? 1 : 0) + (rnd() < techPct(s, 'crateExtra') / 100 ? 1 : 0);
@@ -484,7 +484,7 @@ export function summonManeuvers(s, n, rnd = Math.random) {
     if (had) war(s, 'skillUp:' + r);
     else if (s.maneuvers.eq.length < maneuverSlots(s)) s.maneuvers.eq.push(m.id);
     got.push({ id: m.id, r, lvl: s.maneuvers.own[m.id], fresh: !had });
-    if (++s.maneuvers.count >= MANEUVER_LEVEL_STEP && s.maneuvers.level < 100) { s.maneuvers.count = 0; s.maneuvers.level++; }
+    if (++s.maneuvers.count >= recruitStep(s.maneuvers.level) && s.maneuvers.level < 100) { s.maneuvers.count = 0; s.maneuvers.level++; }
   }
   return got;
 }
@@ -498,8 +498,9 @@ export function toggleManeuver(s, id) {
 
 // ---------- emblemi ----------
 export const emblemCost = (s) => Math.ceil(EMBLEM_COST * (1 - techPct(s, 'emblemCost') / 100));
-export const emblemRates = (s) => EMBLEM_RATES[Math.min(EMBLEM_RATES.length, s.emblems.level) - 1].slice(1);
-export const emblemNext = (s) => EMBLEM_RATES[Math.min(EMBLEM_RATES.length, s.emblems.level) - 1][0];
+export const emblemRates = (s) => EMBLEM_RATES[Math.min(EMBLEM_RATES.length, s.emblems.level) - 1];
+export const emblemNext = (s) => (s.emblems.level >= EMBLEM_RATES.length ? 0 : recruitStep(s.emblems.level));
+export const maneuverNext = (s) => recruitStep(s.maneuvers.level);
 export function summonEmblem(s, rnd = Math.random) {
   const cost = emblemCost(s);
   if (!unlocked(s, 'emblems') || s.paint < cost) return null;
@@ -515,7 +516,7 @@ export function summonEmblem(s, rnd = Math.random) {
     got.push({ id: e.id, r, lvl: s.emblems.own[e.id], fresh: !had });
     s.emblems.count++;
     const need = emblemNext(s);
-    if (need && s.emblems.count >= need) s.emblems.level++;
+    if (need && s.emblems.count >= need) { s.emblems.level++; s.emblems.count = 0; }
   }
   return got;
 }

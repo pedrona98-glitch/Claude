@@ -3,21 +3,20 @@
 export const STAGES_PER_CHAPTER = 20;   // missioni 1-1 … 1-20; l'ultima è un boss
 export const WAVES = [3, 3, 1];         // nemici per ondata; l'ultima ondata è il capo squadriglia
 export const BOSS_TIME = 30;
-export const OFFLINE_HOURS = 4;
-export const DAILY_KEYS = 2;
-export const SELL_BASE = 20;            // monete per un pezzo di livello 1
+export const OFFLINE_HOURS = 6;
+export const DAILY_KEYS = 3;
+export const SELL_BASE = 12;            // monete per un pezzo di livello 1 (+1,5% a livello)
 export const START_WRENCHES = 40;
 
 // Missione in cui si sblocca ogni funzione (numero progressivo: capitolo × 20 + missione).
 const at = (chapter, n) => (chapter - 1) * STAGES_PER_CHAPTER + n;
 export const UNLOCKS = {
-  shop: at(2, 1), pass: at(2, 5), autoForge: at(2, 10), thief: at(2, 10),
-  ghost: at(2, 15), maneuvers: at(2, 15), tech1: at(2, 15), maneuver2: at(2, 15),
-  invasion: at(3, 1), drones: at(3, 1), tech2: at(3, 1), drone1: at(3, 1),
-  arena: at(3, 10), chat: at(3, 10),
-  swarm: at(4, 1), maneuver3: at(4, 1), tech3: at(4, 1), drone2: at(4, 10),
-  alliance: at(4, 15), emblems: at(4, 15), maneuver4: at(5, 1), forge2: at(5, 15),
-  drone3: at(6, 1), tech4: at(6, 1), forge3: at(7, 15), tech5: at(8, 1),
+  shop: at(1, 8), pass: at(1, 15), autoForge: at(2, 5), thief: at(2, 5),
+  ghost: at(2, 12), maneuvers: at(2, 12), maneuver2: at(2, 12), tech1: at(2, 18),
+  invasion: at(3, 3), drones: at(3, 3), drone1: at(3, 3), tech2: at(3, 8),
+  arena: at(3, 12), chat: at(3, 12), swarm: at(3, 18), maneuver3: at(4, 5), tech3: at(4, 8),
+  drone2: at(4, 12), alliance: at(4, 18), emblems: at(5, 3), maneuver4: at(5, 10), forge2: at(5, 18),
+  tech4: at(6, 3), drone3: at(6, 8), forge3: at(7, 12), tech5: at(8, 3),
 };
 
 // Dieci epoche dell'aviazione: la qualità dei pezzi costruiti.
@@ -49,9 +48,9 @@ export const SLOTS = [
 
 // Statistiche secondarie: valore massimo (%) su un singolo pezzo.
 export const SUBSTATS = [
-  { id: 'atkSpeed', max: 40 }, { id: 'crit', max: 12 }, { id: 'critDmg', max: 100 }, { id: 'damage', max: 15 },
-  { id: 'double', max: 40 }, { id: 'health', max: 15 }, { id: 'regen', max: 6 }, { id: 'lifesteal', max: 20 },
-  { id: 'block', max: 5 }, { id: 'skillCd', max: 7 }, { id: 'skillDmg', max: 30 },
+  { id: 'atkSpeed', max: 35 }, { id: 'crit', max: 10 }, { id: 'critDmg', max: 80 }, { id: 'damage', max: 12 },
+  { id: 'double', max: 30 }, { id: 'health', max: 12 }, { id: 'regen', max: 5 }, { id: 'lifesteal', max: 15 },
+  { id: 'block', max: 6 }, { id: 'skillCd', max: 8 }, { id: 'skillDmg', max: 25 },
 ];
 
 // Rarità comuni a droni, manovre ed emblemi.
@@ -60,24 +59,22 @@ export const RARITIES = [
   { id: 'legendary', color: '#f2a25c' }, { id: 'ultimate', color: '#e5687a' }, { id: 'mythic', color: '#f2d27a' },
 ];
 
-// Droni di scorta: escono dalle casse. Danno e vita di base al livello 1.
-export const CRATE_SECONDS = [1800, 7200, 14400, 28800, 57600, 115200];
+// Droni di scorta: escono dalle casse. Tre ruoli: attacco (più danno), equilibrio, scudo (più vita).
+export const CRATE_SECONDS = [1200, 5400, 10800, 21600, 43200, 86400];
+const ROLES = { atk: [1.6, 0.45], mid: [1, 1], tank: [0.5, 1.7] };
+const drone = (id, r, role) => ({ id, r, role, dmg: 2.5 * Math.pow(4.6, r) * ROLES[role][0], hp: 40 * Math.pow(4.6, r) * ROLES[role][1] });
 export const DRONES = [
-  { id: 'grillo', r: 0, dmg: 50, hp: 1200 }, { id: 'ape', r: 0, dmg: 50, hp: 1200 }, { id: 'passero', r: 0, dmg: 100, hp: 800 },
-  { id: 'rondone', r: 0, dmg: 100, hp: 800 }, { id: 'merlo', r: 0, dmg: 100, hp: 800 }, { id: 'vespa', r: 0, dmg: 150, hp: 400 },
-  { id: 'gufo', r: 1, dmg: 250, hp: 6000 }, { id: 'corvo', r: 1, dmg: 250, hp: 6000 }, { id: 'gabbiano', r: 1, dmg: 500, hp: 4000 },
-  { id: 'airone', r: 1, dmg: 750, hp: 2000 }, { id: 'picchio', r: 1, dmg: 750, hp: 2000 },
-  { id: 'falco', r: 2, dmg: 1250, hp: 30000 }, { id: 'nibbio', r: 2, dmg: 1250, hp: 30000 }, { id: 'poiana', r: 2, dmg: 2500, hp: 20000 },
-  { id: 'astore', r: 2, dmg: 3750, hp: 10000 }, { id: 'sparviero', r: 2, dmg: 3750, hp: 10000 },
-  { id: 'grifone', r: 3, dmg: 12500, hp: 100000 }, { id: 'condor', r: 3, dmg: 18750, hp: 50000 }, { id: 'albatro', r: 3, dmg: 18750, hp: 50000 },
-  { id: 'fenice', r: 4, dmg: 31200, hp: 750000 }, { id: 'pegaso', r: 4, dmg: 62500, hp: 500000 }, { id: 'chimera', r: 4, dmg: 93700, hp: 250000 },
-  { id: 'drago', r: 5, dmg: 156250, hp: 3750000 }, { id: 'idra', r: 5, dmg: 312500, hp: 2500000 }, { id: 'leviatano', r: 5, dmg: 468750, hp: 1250000 },
+  drone('grillo', 0, 'tank'), drone('ape', 0, 'tank'), drone('passero', 0, 'mid'), drone('rondone', 0, 'mid'), drone('merlo', 0, 'mid'), drone('vespa', 0, 'atk'),
+  drone('gufo', 1, 'tank'), drone('corvo', 1, 'tank'), drone('gabbiano', 1, 'mid'), drone('airone', 1, 'atk'), drone('picchio', 1, 'atk'),
+  drone('falco', 2, 'tank'), drone('nibbio', 2, 'tank'), drone('poiana', 2, 'mid'), drone('astore', 2, 'atk'), drone('sparviero', 2, 'atk'),
+  drone('grifone', 3, 'tank'), drone('condor', 3, 'atk'), drone('albatro', 3, 'mid'),
+  drone('fenice', 4, 'tank'), drone('pegaso', 4, 'mid'), drone('chimera', 4, 'atk'),
+  drone('drago', 5, 'tank'), drone('idra', 5, 'mid'), drone('leviatano', 5, 'atk'),
 ];
-export const DRONE_SCALE = 0.04;        // i valori di riferimento sono su una scala più grande della nostra
 export const DRONE_MAX_LEVEL = 100;
 
 // Emblemi di squadriglia (dipinti sulla fusoliera): bonus % a danno e vita per rarità.
-export const EMBLEM_BOOST = [10, 40, 80, 150, 250, 400];
+export const EMBLEM_BOOST = [8, 25, 55, 110, 200, 350];
 export const EMBLEM_COST = 50;          // vernice per un richiamo
 export const EMBLEMS = [
   { id: 'star', r: 0 }, { id: 'arrow', r: 0 }, { id: 'roundel', r: 0 },
@@ -103,7 +100,6 @@ export const MANEUVERS = [
   { id: 'storm', r: 5, cd: 20, kind: 'hit', k: 100 },
   { id: 'rebirth', r: 5, cd: 30, kind: 'fury', k: 2, dur: 12 },
 ];
-export const MANEUVER_LEVEL_STEP = 10;  // richiami per salire di livello di reclutamento
 export const MANEUVER_MAX_LEVEL = 255;
 
 // Ricerca: tre rami, ogni nodo ha 25 livelli (5 gradi da 5). `v` è il bonus per livello.
@@ -130,12 +126,8 @@ export const DUNGEONS = [
   { id: 'invasion', icon: 'crate' }, { id: 'swarm', icon: 'flask' },
 ];
 
-// Lega settimanale dell'arena: 100 piloti per girone.
-export const LEAGUES = [
-  { id: 'unranked', up: 90, down: 101 }, { id: 'bronze', up: 80, down: 101 }, { id: 'silver', up: 50, down: 90 },
-  { id: 'gold', up: 20, down: 80 }, { id: 'platinum', up: 10, down: 70 }, { id: 'diamond', up: 0, down: 36 },
-];
-export const ARENA_TICKETS = 5;
+// Lega settimanale dell'arena (le regole stanno in shared/social.js).
+export const ARENA_TICKETS = 6;
 
 // Obiettivi: stat = chiave in state.stats, ricompensa in gemme.
 export const MISSIONS = [
@@ -179,4 +171,4 @@ export const AD_REWARDS = {
   gems: { give: { gems: 5 }, cooldown: 15 * 60 },
 };
 export const AD_SPEEDUP_SECONDS = 30 * 60;
-export const ALLIANCE_CREATE_GEMS = 150;
+export const ALLIANCE_CREATE_GEMS = 120;

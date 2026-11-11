@@ -73,7 +73,7 @@ function seedDemo() {
       if (!cid) cid = w.handle(tokens[i], 'clan.create', { name, tag }, now).clan.id;
       else w.handle(tokens[i], 'clan.join', { id: cid }, now);
     }
-    if (cid) w.data.clans[cid].tp = [22, 17, 12, 10, 10][a];
+    if (cid) w.data.clans[cid].tp = [34, 24, 15, 10, 10][a];
   });
   w.data.demoAt = now; w.data.demoChat = 0;
   const lines = BOT_LINES[getLang()] || BOT_LINES.en;

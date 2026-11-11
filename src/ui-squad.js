@@ -125,7 +125,7 @@ export function createSquadUI(kit) {
     kit.addUpdater(() => {
       const s = S();
       lvl.innerHTML = `${t('recruit_level', s.maneuvers.level)} · ${cost('scroll', s.plans)}`;
-      fill.style.width = (s.maneuvers.count / 10) * 100 + '%';
+      fill.style.width = (s.maneuvers.count / G.maneuverNext(s)) * 100 + '%';
     });
     panel.append(card, el('p', 'hint', t('maneuvers_d', G.maneuverSlots(s0))));
     const own = Object.keys(s0.maneuvers.own).sort((a, b) => MAN[b].r - MAN[a].r);

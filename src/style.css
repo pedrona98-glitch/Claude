@@ -388,12 +388,12 @@ button.cur { cursor: pointer; }
 .pass-cell.done { color: var(--good); opacity: .6; }
 
 /* Lega, alleanza, guerra */
-.league.tier-S { border-color: #f2d27a; color: #f2d27a; } .league.tier-A { border-color: #e5687a; color: #e5687a; }
-.league.tier-B { border-color: #9b8cf0; color: #9b8cf0; } .league.tier-C, .league.tier-D { border-color: var(--muted); color: var(--muted); }
+.league.tier-gold { border-color: #f2d27a; color: #f2d27a; } .league.tier-silver { border-color: #c0c7d1; color: #c0c7d1; }
+.league.tier-bronze { border-color: #c98a5a; color: #c98a5a; } .league.tier-none { border-color: var(--muted); color: var(--muted); }
 .league b { font: 700 22px var(--display); }
 .league.lg-bronze { border-color: #c98a5a; color: #c98a5a; } .league.lg-silver { border-color: #c0c7d1; color: #c0c7d1; }
-.league.lg-gold { border-color: #f2d27a; color: #f2d27a; } .league.lg-platinum { border-color: #7fd6e8; color: #7fd6e8; }
-.league.lg-diamond { border-color: #b08cf0; color: #b08cf0; } .league.lg-unranked { border-color: var(--muted); color: var(--muted); }
+.league.lg-gold { border-color: #f2d27a; color: #f2d27a; } .league.lg-ace { border-color: #7fd6e8; color: #7fd6e8; }
+.league.lg-legend { border-color: #b08cf0; color: #b08cf0; } .league.lg-rookie { border-color: var(--muted); color: var(--muted); }
 .board-row.up .board-rank { color: var(--good); } .board-row.down .board-rank { color: var(--bad); }
 .war-days { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
 .war-day { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 6px 2px; border-radius: 8px; border: 1px solid var(--line); font: 600 12px var(--display); font-variant-numeric: tabular-nums; }

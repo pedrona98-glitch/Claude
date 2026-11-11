@@ -10,9 +10,10 @@ const NOW = Date.UTC(2026, 10, 10, 12);
 const unlockAll = (s) => { s.stats.maxStage = 400; };
 
 test('tabelle: le probabilità dell\'officina sommano a 100 a ogni livello', () => {
-  assert.equal(FORGE_ODDS.length, 35);
+  assert.equal(FORGE_ODDS.length, 40);
   for (const row of FORGE_ODDS) assert.ok(Math.abs(row.reduce((a, b) => a + b, 0) - 100) < 0.05, row.join(','));
-  assert.equal(FORGE_UPGRADES[0][0], 400); assert.equal(FORGE_UPGRADES[5][2], 7 * 3600 + 33 * 60);
+  assert.deepEqual(FORGE_UPGRADES[0], [250, 1, 240]);
+  for (let i = 1; i < FORGE_UPGRADES.length; i++) assert.ok(FORGE_UPGRADES[i][0] * FORGE_UPGRADES[i][1] > FORGE_UPGRADES[i - 1][0] * FORGE_UPGRADES[i - 1][1] && FORGE_UPGRADES[i][2] > FORGE_UPGRADES[i - 1][2]);
 });
 
 test('officina: costruire, montare o vendere; livello del pezzo legato all\'officina', () => {
@@ -25,10 +26,10 @@ test('officina: costruire, montare o vendere; livello del pezzo legato all\'offi
   assert.deepEqual(G.build(s), []); // prima va deciso il pezzo in attesa
   const sold = G.resolvePending(s, false);
   assert.equal(sold, G.partSell(s, { lvl: s.parts.guns.lvl - 5 })); assert.equal(G.stats(s).atk, base);
-  s.forge.level = 12; // a questo livello esistono le epoche 1..4
+  s.forge.level = 12; // a questo livello esistono le epoche 1..3
   G.build(s, seq(0, 0.999, 0, 0, 0.5, 0.5));
   const p = s.pending[0];
-  assert.equal(p.age, 4); assert.equal(p.subs.length, 1); assert.ok(p.lvl >= 1 && p.lvl <= G.maxPartLevel(s));
+  assert.equal(p.age, 3); assert.equal(p.subs.length, 1); assert.ok(p.lvl >= 1 && p.lvl <= G.maxPartLevel(s));
   G.resolvePending(s, true);
   assert.ok(G.stats(s).atk > base * 10);
   s.wrenches = 0; assert.deepEqual(G.build(s), []);
@@ -38,15 +39,15 @@ test('officina: a rate, poi a tempo; costruzione multipla e automatica', () => {
   const s = G.newState(NOW);
   assert.equal(G.payForge(s, NOW), false); // niente monete
   s.coins = 1000;
-  assert.ok(G.payForge(s, NOW)); assert.equal(s.coins, 600); assert.equal(s.forge.end, NOW + 300e3);
+  assert.ok(G.payForge(s, NOW)); assert.equal(s.coins, 750); assert.equal(s.forge.end, NOW + 240e3);
   assert.equal(G.payForge(s, NOW), false);
-  G.tick(s, 0.1, NOW + 299e3); assert.equal(s.forge.level, 1);
-  G.tick(s, 0.1, NOW + 301e3); assert.equal(s.forge.level, 2); assert.equal(s.stats.forgeLevel, 2);
-  s.forge.level = 9; s.coins = 1e6; // 50k × 3 rate
+  G.tick(s, 0.1, NOW + 239e3); assert.equal(s.forge.level, 1);
+  G.tick(s, 0.1, NOW + 241e3); assert.equal(s.forge.level, 2); assert.equal(s.stats.forgeLevel, 2);
+  s.forge.level = 15; s.coins = 1e7; // tre rate
   assert.ok(G.payForge(s, NOW)); assert.equal(s.forge.end, 0); assert.ok(G.payForge(s, NOW)); assert.ok(G.payForge(s, NOW));
-  assert.ok(s.forge.end > NOW); assert.equal(s.coins, 1e6 - 150000);
+  assert.ok(s.forge.end > NOW); assert.equal(s.coins, 1e7 - 3 * FORGE_UPGRADES[14][0]);
   s.gems = 1000; const g = G.skipGems(s.forge.end, NOW);
-  assert.ok(G.speedUp(s, 'forge', NOW, { gems: true })); assert.equal(s.forge.level, 10); assert.equal(s.gems, 1000 - g);
+  assert.ok(G.speedUp(s, 'forge', NOW, { gems: true })); assert.equal(s.forge.level, 16); assert.equal(s.gems, 1000 - g);
   // costruzione multipla dopo 5-15, automatica che si ferma su un'epoca alta
   s.stats.maxStage = UNLOCKS.forge2; s.wrenches = 10;
   assert.equal(G.forgeBatch(s), 2);
@@ -79,15 +80,16 @@ test('dungeon: chiave consumata solo vincendo, sweep, ricompense, ricarica giorn
   assert.equal(G.runDungeon(s, 'thief', 1), null); // bloccato
   unlockAll(s);
   const lose = G.runDungeon(s, 'thief', 1);
-  assert.equal(lose.win, false); assert.equal(s.keys.thief, 2);
+  assert.equal(lose.win, false); assert.equal(s.keys.thief, 3);
   for (const sl of SLOTS) s.parts[sl.id] = { slot: sl.id, age: 6, lvl: 60, subs: [] };
   assert.equal(G.runDungeon(s, 'thief', 3), null); // si sale un livello alla volta
   const win = G.runDungeon(s, 'thief', 1);
-  assert.ok(win.win); assert.equal(s.keys.thief, 1); assert.equal(s.dungeons.thief, 1);
+  assert.ok(win.win); assert.equal(s.keys.thief, 2); assert.equal(s.dungeons.thief, 1);
   assert.ok(win.reward.wrenches > 0 && win.reward.coins > 0);
-  const sweep = G.runDungeon(s, 'thief', 0, { sweep: true }); assert.equal(sweep.level, 1); assert.equal(s.keys.thief, 0);
+  const sweep = G.runDungeon(s, 'thief', 0, { sweep: true }); assert.equal(sweep.level, 1); assert.equal(s.keys.thief, 1);
+  s.keys.thief = 0;
   assert.equal(G.runDungeon(s, 'thief', 2), null);
-  G.tick(s, 0.1, NOW + 86400e3); assert.equal(s.keys.thief, 2);
+  G.tick(s, 0.1, NOW + 86400e3); assert.equal(s.keys.thief, 3);
   const inv = G.runDungeon(s, 'invasion', 1, { rnd: () => 0 });
   assert.deepEqual(inv.reward.crates, [0]); assert.deepEqual(s.drones.crates, [0]);
   assert.ok(G.runDungeon(s, 'ghost', 1).reward.plans >= 5); assert.ok(G.runDungeon(s, 'swarm', 1).reward.blueprints >= 60);
@@ -122,8 +124,9 @@ test('manovre ed emblemi: reclutamento con livelli, effetti in battaglia', () =>
   const e1 = G.summonEmblem(s, () => 0);
   assert.equal(e1[0].r, 0); assert.equal(s.emblems.eq, e1[0].id); assert.equal(s.paint, 50);
   const before = G.stats(G.newState(NOW)).atk;
-  assert.ok(Math.abs(G.stats(s).atk / before - 1.1) < 1e-9);
-  G.summonEmblem(s, () => 0); assert.equal(s.emblems.level, 2);
+  assert.ok(Math.abs(G.stats(s).atk / before - 1.08) < 1e-9);
+  s.paint = 250; for (let i = 0; i < 5; i++) G.summonEmblem(s, () => 0);
+  assert.equal(s.emblems.level, 2); assert.equal(s.emblems.count, 0);
 });
 
 test('ricerca: gradi sbloccati dalla missione, un nodo alla volta, effetti', () => {
@@ -131,20 +134,20 @@ test('ricerca: gradi sbloccati dalla missione, un nodo alla volta, effetti', () 
   s.blueprints = 1000;
   assert.equal(G.startTech(s, 'atkMastery', NOW), false); // grado I non ancora sbloccato
   s.stats.maxStage = UNLOCKS.tech1;
-  assert.ok(G.startTech(s, 'atkMastery', NOW)); assert.equal(s.blueprints, 960);
+  assert.ok(G.startTech(s, 'atkMastery', NOW)); assert.equal(s.blueprints, 965);
   assert.equal(G.startTech(s, 'hpMastery', NOW), false);
   G.tick(s, 0.1, NOW + 301e3); assert.equal(G.techLv(s, 'atkMastery'), 1);
   s.tech.lv.atkMastery = 5;
-  assert.equal(G.techCost(s, 'atkMastery').open, false); // grado II richiede 3-1
+  assert.equal(G.techCost(s, 'atkMastery').open, false); // il grado II si sblocca più avanti
   s.tech.lv.forgeTime = 25; s.coins = 400;
-  G.payForge(s, NOW); assert.equal(s.forge.end, NOW + 300e3 / 2);
+  G.payForge(s, NOW); assert.equal(s.forge.end, NOW + 240e3 / 2);
 });
 
 test('offline, premio giornaliero, pass, prodotti, salvataggio e migrazione', () => {
   const s = G.newState(NOW);
   for (const sl of SLOTS) s.parts[sl.id] = { slot: sl.id, age: 1, lvl: 10, subs: [{ id: 'crit', v: 3 }] };
   const a = G.offlineEarnings(s, 3600), b = G.offlineEarnings(s, 99 * 3600);
-  assert.equal(b.secs, 4 * 3600); assert.ok(b.coins > a.coins && a.wrenches > 0);
+  assert.equal(b.secs, 6 * 3600); assert.ok(b.coins > a.coins && a.wrenches > 0);
   assert.equal(G.claimDaily(s, NOW), 10); assert.equal(G.claimDaily(s, NOW), 0);
   s.pass.xp = 360; assert.equal(G.passTier(s), 3);
   assert.ok(G.claimPass(s, 0, false)); assert.equal(G.claimPass(s, 0, false), null); assert.equal(G.claimPass(s, 0, true), null);

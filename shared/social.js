@@ -5,11 +5,11 @@
 export const RULES = {
   serverOpenDays: 7,      // un server accetta nuove iscrizioni per questi giorni...
   serverCap: 3000,        // ...o fino a questo numero di giocatori
-  leagueSize: 100,
-  arenaTickets: 5,
-  clanMax: 50,
-  rejoinHours: 24,
-  warTickets: 5,
+  leagueSize: 50,
+  arenaTickets: 6,
+  clanMax: 30,
+  rejoinHours: 12,
+  warTickets: 4,
   chatKeep: 200,
   chatMinGapMs: 2000,
   chatMaxLen: 200,
@@ -23,57 +23,51 @@ const fail = (code) => { throw new ApiError(code); };
 
 const DAY = 86400e3;
 export const dayOf = (now) => Math.floor(now / DAY);
-/** Settimana di gioco: parte il martedì (UTC). Giorni 0-5 attivi (mar-dom), 6 = lunedì di pausa. */
-export const weekOf = (now) => Math.floor((dayOf(now) - 5) / 7);
-export const weekDay = (now) => (((dayOf(now) - 5) % 7) + 7) % 7;
-export const weekEnd = (now) => ((weekOf(now) + 1) * 7 + 5) * DAY;
-export const activeEnd = (now) => (weekOf(now) * 7 + 5 + 6) * DAY;
+/** Settimana di gioco: parte il lunedì (UTC). Giorni 0-5 attivi (lun-sab), 6 = domenica di pausa. */
+const MONDAY = 4; // il 5 gennaio 1970 era lunedì
+export const weekOf = (now) => Math.floor((dayOf(now) - MONDAY) / 7);
+export const weekDay = (now) => (((dayOf(now) - MONDAY) % 7) + 7) % 7;
+export const weekEnd = (now) => ((weekOf(now) + 1) * 7 + MONDAY) * DAY;
+export const activeEnd = (now) => (weekOf(now) * 7 + MONDAY + 6) * DAY;
 
 // ---------- lega ----------
-export const LEAGUE_IDS = ['unranked', 'bronze', 'silver', 'gold', 'platinum', 'diamond'];
-const LEAGUE_MOVE = [[90, 101], [80, 101], [50, 90], [20, 80], [10, 70], [0, 36]]; // [promossi fino a, retrocessi da]
-const BRACKETS = [1, 2, 3, 5, 10, 20, 50, 100];
-// Per lega e fascia di classifica: [chiavi inglesi, monete, piani, casse, progetti, vernice].
-const LEAGUE_REWARDS = [
-  [[175, 9e3, 210, 1, 180, 0], [140, 7e3, 170, 0, 140, 0], [110, 5600, 140, 0, 0, 0], [90, 4500, 100, 0, 0, 0], [70, 3500, 0, 0, 0, 0], [50, 2800, 0, 0, 0, 0], [40, 2290, 0, 0, 0, 0], [30, 1800, 0, 0, 0, 0]],
-  [[350, 17500, 420, 2, 350, 70], [280, 14e3, 330, 1, 280, 20], [220, 11200, 270, 1, 220, 0], [180, 9e3, 210, 1, 180, 0], [140, 7100, 170, 1, 140, 0], [110, 5700, 130, 0, 110, 0], [90, 4500, 110, 0, 90, 0], [70, 3600, 90, 0, 70, 0]],
-  [[700, 35e3, 840, 3, 700, 280], [550, 28e3, 672, 2, 560, 230], [450, 22400, 538, 2, 448, 180], [350, 17900, 430, 1, 358, 150], [290, 14300, 344, 1, 287, 0], [230, 11400, 275, 1, 229, 0], [190, 9170, 220, 1, 184, 0], [150, 7340, 176, 1, 147, 0]],
-  [[1220, 61200, 1470, 5, 1220, 490], [980, 49e3, 1170, 4, 980, 392], [784, 39200, 941, 3, 784, 314], [627, 31300, 753, 2, 627, 251], [502, 25e3, 602, 2, 502, 201], [401, 20e3, 482, 2, 401, 161], [321, 16e3, 385, 1, 321, 128], [257, 12800, 308, 1, 257, 0]],
-  [[1750, 87500, 2100, 7, 1750, 700], [1400, 70e3, 1680, 6, 1400, 560], [1120, 56e3, 1340, 4, 1120, 448], [896, 44800, 1070, 4, 896, 358], [717, 35800, 860, 3, 717, 287], [573, 28600, 688, 2, 573, 229], [459, 22900, 551, 2, 459, 184], [367, 18300, 440, 1, 367, 147]],
-  [[2620, 131e3, 3150, 11, 2620, 1050], [2100, 105e3, 2520, 8, 2100, 840], [1680, 84e3, 2010, 7, 1680, 672], [1340, 67200, 1610, 5, 1340, 538], [1070, 53700, 1290, 4, 1070, 430], [860, 43e3, 1030, 3, 860, 344], [688, 34400, 826, 3, 688, 275], [551, 27500, 661, 2, 551, 220]],
-];
-const PLAN_SCALE = 1 / 40, CRATE_SCALE = 0.5;
-function pack(row, crateRarity) {
-  const [wrenches, coins, plans, crates, blueprints, paint] = row;
-  const n = Math.round(crates * CRATE_SCALE);
-  return { wrenches, coins, plans: Math.round(plans * PLAN_SCALE), blueprints, paint, crates: Array(n).fill(crateRarity) };
-}
+export const LEAGUE_IDS = ['rookie', 'bronze', 'silver', 'gold', 'ace', 'legend'];
+const LEAGUE_MOVE = [[30, 51], [20, 51], [12, 41], [8, 38], [5, 36], [0, 33]]; // [promossi fino a, retrocessi da]
+const BRACKETS = [1, 2, 3, 5, 10, 25, 50];
+const BRACKET_SHARE = [1, 0.8, 0.65, 0.5, 0.4, 0.3, 0.22];
+const scale = (n, k) => Math.round(n * k);
+/** Premio di fine stagione per lega e posizione (null fuori classifica). */
 export function leagueReward(tier, rank) {
   const b = BRACKETS.findIndex((x) => rank <= x);
-  return b < 0 ? null : pack(LEAGUE_REWARDS[tier][b], Math.min(3, 1 + Math.floor(tier / 2)));
+  if (b < 0) return null;
+  const k = Math.pow(1.7, tier) * BRACKET_SHARE[b];
+  return {
+    wrenches: scale(150, k), coins: scale(8000, k), plans: Math.round((4 + 3 * tier) * BRACKET_SHARE[b]), blueprints: scale(120, k),
+    paint: tier >= 2 ? scale(60 * Math.pow(1.6, tier - 2), BRACKET_SHARE[b]) : 0,
+    crates: Array(b < 3 ? Math.floor(tier / 2) + 1 : b < 5 ? 1 : 0).fill(Math.min(3, Math.floor(tier / 2) + 1)),
+  };
 }
 
 // ---------- guerra ----------
-export const WAR_DAY_VALUE = [1, 2, 3, 4, 5, 2];
+export const WAR_DAY_VALUE = [1, 1, 2, 2, 3, 3];
 export const WAR_DAYS = [
-  ['forge', 'tech', 'skillUp'],
-  ['forgeCoins', 'forgeUp', 'dungeonKey', 'hatch', 'merge'],
-  ['forge', 'skillUp', 'emblem'],
-  ['forgeCoins', 'forgeUp', 'tech', 'hatch', 'merge'],
-  ['forge', 'dungeonKey', 'emblem'],
+  ['forge', 'skillUp'],
+  ['dungeonKey', 'hatch'],
+  ['tech', 'emblem'],
+  ['forgeCoins', 'forgeUp', 'merge'],
+  ['forge', 'hatch', 'emblem'],
   ['fight'],
 ];
-const AGE_POINTS = [1, 1, 1, 2, 2, 2, 2, 3, 3, 3];
 const POINTS = {
-  forge: (a) => AGE_POINTS[a] || 0,
-  tech: (t) => [300, 7500, 20000, 35000, 62000][t] || 0,
-  skillUp: (r) => [50, 75, 100, 125, 150, 175][r] || 0,
-  forgeCoins: () => 10,
-  forgeUp: () => 10000,
-  dungeonKey: () => 1000,
-  hatch: (r) => [250, 1000, 2500, 5000, 10000, 16000][r] || 0,
-  merge: (r) => [50, 200, 500, 1000, 2000, 3200][r] || 0,
-  emblem: (r) => [400, 600, 900, 1350, 2000, 3000][r] || 0,
+  forge: (a) => (a >= 0 && a <= 9 ? a + 1 : 0),
+  tech: (t) => [250, 2000, 8000, 20000, 40000][t] || 0,
+  skillUp: (r) => (r >= 0 && r <= 5 ? 40 + 30 * r : 0),
+  forgeCoins: () => 8,
+  forgeUp: () => 6000,
+  dungeonKey: () => 800,
+  hatch: (r) => [200, 700, 2000, 5000, 11000, 20000][r] || 0,
+  merge: (r) => [40, 120, 350, 800, 1600, 3000][r] || 0,
+  emblem: (r) => [300, 500, 800, 1200, 1800, 2600][r] || 0,
 };
 /** Punti di una voce del registro azioni nel giorno di guerra `day`. */
 export function warPoints(key, count, day) {
@@ -82,15 +76,15 @@ export function warPoints(key, count, day) {
   const n = Math.min(1e6, Math.max(0, Math.floor(Number(count) || 0)));
   return POINTS[kind](Number(arg) || 0) * n;
 }
-export const CLAN_TIERS = [['S', 25], ['A', 20], ['B', 15], ['C', 10]];
+export const CLAN_TIERS = [['gold', 30], ['silver', 20], ['bronze', 10]];
 export const clanTier = (tp) => CLAN_TIERS.findIndex(([, min]) => tp >= min);
-// Per fascia S/A/B/C: [vittoria, sconfitta] con le stesse colonne della lega.
-const WAR_REWARDS = [
-  [[8400, 280e3, 5600, 22, 4200, 2290], [4200, 140e3, 2800, 11, 2100, 1120]],
-  [[5900, 196e3, 4000, 16, 3000, 1550], [3000, 98e3, 2000, 8, 1500, 780]],
-  [[4000, 140e3, 2800, 11, 2000, 1000], [2000, 70e3, 1400, 5, 1000, 550]],
-  [[2900, 96e3, 1900, 8, 1500, 750], null],
-];
+const WAR_MULT = [[3, 1.5], [2, 1], [1.3, 0.3]]; // per fascia: [vittoria, sconfitta]
+/** Premio di guerra per chi ha contribuito (null senza fascia). */
+export function warReward(tier, won) {
+  if (tier < 0) return null;
+  const k = WAR_MULT[tier][won ? 0 : 1];
+  return { wrenches: scale(1200, k), coins: scale(50000, k), plans: scale(25, k), blueprints: scale(900, k), paint: scale(300, k), crates: Array(Math.max(1, Math.round(3 * k / 2))).fill(3 - tier) };
+}
 
 const BAD_WORDS = ['cazzo', 'merda', 'stronz', 'vaffanculo', 'puttana', 'troia', 'fuck', 'shit', 'bitch', 'asshole', 'cunt', 'nigger', 'faggot'];
 const BOT_NAMES = ['Recluta Alfa', 'Recluta Bravo', 'Recluta Charlie', 'Recluta Delta', 'Recluta Echo', 'Recluta Foxtrot'];
@@ -250,7 +244,7 @@ export function createWorld(data = emptyData(), { rnd = Math.random, rules = {} 
     u.tix--;
     const g = groupOf(u, weekOf(now)), res = duel(u, opp, rnd);
     const ratio = powerOf(opp) / Math.max(1, powerOf(u));
-    const gain = res.win ? Math.round(15 + Math.max(-5, Math.min(10, (ratio - 1) * 20))) : 2;
+    const gain = res.win ? Math.round(20 + Math.max(-8, Math.min(8, (ratio - 1) * 25))) : 1;
     g.lp[u.id] = (g.lp[u.id] || 0) + gain;
     if (res.win) u.wins++;
     u.offer = [];
@@ -338,12 +332,12 @@ export function createWorld(data = emptyData(), { rnd = Math.random, rules = {} 
           const c = data.clans[cid];
           if (!c) return;
           const won = score[side] > score[1 - side], tier = clanTier(c.tp);
-          const row = tier >= 0 ? WAR_REWARDS[tier][won ? 0 : 1] : null;
+          const prize = warReward(tier, won);
           for (const [uid, pts] of Object.entries(p.contrib)) {
             const m = data.users[uid];
-            if (m && m.clan === cid && pts > 0 && row) addPack(m, pack(row, Math.max(1, 3 - tier)));
+            if (m && m.clan === cid && pts > 0) addPack(m, prize);
           }
-          c.tp = Math.max(0, c.tp + (won ? 5 : tier >= 0 && tier <= 2 ? -5 : 0));
+          c.tp = Math.max(0, c.tp + (won ? 4 : tier >= 0 && tier <= 1 ? -3 : 0));
           c.lastWar = { week: w.week, won, mine: score[side], theirs: score[1 - side], tier };
         });
       }
@@ -394,10 +388,10 @@ export function createWorld(data = emptyData(), { rnd = Math.random, rules = {} 
     if (idx < 0) fail('not_found');
     u.warTix--;
     const opp = enemies[idx], res = duel(u, opp, rnd);
-    let pts = res.win ? Math.round(1 + 49 * (enemies.length > 1 ? 1 - idx / (enemies.length - 1) : 1)) : 0;
+    let pts = res.win ? Math.round(5 + 55 * (enemies.length > 1 ? 1 - idx / (enemies.length - 1) : 1)) : 0;
     if (res.win) {
       war.pair.beaten[opp.id] = true;
-      if (!war.pair.brawl[war.side] && enemies.every((x) => war.pair.beaten[x.id])) { war.pair.brawl[war.side] = true; pts += 1000; }
+      if (!war.pair.brawl[war.side] && enemies.every((x) => war.pair.beaten[x.id])) { war.pair.brawl[war.side] = true; pts += 800; }
     }
     war.pair.days[5][war.side] += pts;
     war.pair.contrib[u.id] = (war.pair.contrib[u.id] || 0) + pts;
