@@ -1,8 +1,8 @@
 // Interfaccia DOM: HUD, schede, finestre modali, negozio.
 import * as G from './game.js';
 import {
-  UPGRADES, PILOTS, AIRCRAFT, TALENTS, MISSIONS, PRODUCTS, DAILY_GEMS, KILLS_PER_STAGE,
-  PRESTIGE_MIN_STAGE, AD_GEMS, AD_GEMS_COOLDOWN, AD_BOOST_SECONDS, WARP_GEMS, WARP_SECONDS,
+  SLOTS, TIERS, PILOTS, PILOT_BONUS, AIRCRAFT, MISSIONS, PRODUCTS, DAILY_GEMS, KILLS_PER_STAGE, WORKSHOP_MAX,
+  AD_GEMS, AD_GEMS_COOLDOWN, AD_WRENCHES, AD_WRENCH_COOLDOWN, AD_BOOST_SECONDS, AD_SPEEDUP_SECONDS, WRENCH_PACK,
 } from './data.js';
 import { fmt, fmtTime } from './format.js';
 import { t, setLang, getLang } from './i18n.js';
@@ -29,7 +29,7 @@ export const cost = (icon, n) => `${ic(icon)}<span>${typeof n === 'number' ? fmt
 export function createUI(app) {
   const S = () => app.state;
   const now = () => Date.now();
-  let tab = 'plane', planeView = 'up', updaters = [], modalCount = 0;
+  let tab = 'work', squadView = 'pilots', updaters = [], modalCount = 0;
   const panel = $('#panel');
 
   // ---------- elementi base ----------
@@ -144,33 +144,166 @@ export function createUI(app) {
   }
 
   // ---------- schede ----------
-  const upgradeValue = {
-    cannon: (s) => fmt(G.shotDamage(s)),
-    armor: (s) => fmt(G.squadMaxHp(s)),
-    rate: (s) => G.fireRate(s).toFixed(2),
-    crit: (s) => Math.round(G.critChance(s) * 100),
-    critDmg: (s) => G.critMult(s).toFixed(1),
-    cargo: (s) => Math.round(s.up.cargo * 5),
-  };
+  const slotOf = (id) => SLOTS.find((x) => x.id === id);
+  const statLabel = (p) => `+${fmt(G.partMain(p) * G.globalMult(S()))} ${t(slotOf(p.slot).stat === 'atk' ? 'stat_atk' : 'stat_hp')}`;
+  const subLabel = (p) => (p.sub ? `+${p.val}% ${t('sub_' + p.sub)}` : '');
+  function partCard(p, title) {
+    const tier = TIERS[p.tier], c = el('div', 'part');
+    c.style.setProperty('--tier', tier.color);
+    const head = el('div', 'part-head');
+    head.append(html('div', 'part-ico', ic(slotOf(p.slot).icon)), (() => {
+      const d = el('div', 'info');
+      d.append(el('div', 'part-title', title), el('div', 'name', `${t('slot_' + p.slot)} · ${t('lvl')} ${p.lvl}`), el('div', 'part-tier', t('tier_' + tier.id)));
+      return d;
+    })());
+    c.append(head, el('div', 'part-stat', statLabel(p)));
+    if (p.sub) c.append(el('div', 'part-sub', subLabel(p)));
+    return c;
+  }
 
-  function tabPlane() {
-    const top = el('div', 'bar');
-    top.append(seg([['up', t('upgrades')], ['hangar', t('hangar')]], () => planeView, (v) => { planeView = v; render(); }));
-    if (planeView === 'up') top.append(buyModeBar());
-    panel.append(top);
-    if (planeView === 'hangar') return hangar();
-    for (const u of UPGRADES) {
-      const x = row({ icon: u.icon, title: '' });
-      x.btn.onclick = () => { if (G.buy(S(), 'up', u.id)) { sfx.buy(); refresh(); } };
+  function tabWorkshop() {
+    const grid = el('div', 'slots');
+    for (const sl of SLOTS) {
+      const b = el('button', 'slot'), lv = el('span', 'slot-lv');
+      b.append(html('span', 'slot-ico', ic(sl.icon)), lv);
+      b.setAttribute('aria-label', t('slot_' + sl.id));
+      b.onclick = () => {
+        const p = S().parts[sl.id];
+        if (p) openModal({ title: t('slot_' + sl.id), body: partCard(p, t('mounted')), buttons: [{ label: t('close'), kind: 'ghost' }] });
+      };
+      b.dataset.slot = sl.id;
       updaters.push(() => {
-        const s = S(), q = G.quote(s, 'up', u.id);
-        x.name.textContent = `${t('up_' + u.id)} · ${t('lvl')} ${s.up[u.id]}`;
-        x.sub.textContent = t(`up_${u.id}_d`, upgradeValue[u.id](s));
-        if (q.maxed) setBtn(x, t('max'), '', false, 'done');
-        else setBtn(x, `+${q.n} ${t('lvl')}`, cost('coin', q.cost), s.coins >= q.cost);
+        const p = S().parts[sl.id], key = p ? `${p.lvl}:${p.tier}` : '';
+        if (b._k === key) return;
+        b._k = key;
+        b.classList.toggle('empty', !p);
+        b.style.setProperty('--tier', p ? TIERS[p.tier].color : 'transparent');
+        lv.textContent = p ? `${t('lvl')} ${p.lvl}` : '';
+      });
+      grid.append(b);
+    }
+    panel.append(grid);
+
+    // pezzo appena costruito: confronto con quello montato
+    const choice = el('div', 'choice');
+    updaters.push(() => {
+      const s = S(), p = s.pending, key = p ? JSON.stringify(p) : '';
+      if (choice._k === key) return;
+      choice._k = key; choice.replaceChildren(); choice.hidden = !p; bench.hidden = !!p; grid.hidden = !!p;
+      if (!p) return;
+      const cur = s.parts[p.slot], delta = G.partMain(p) / G.partMain(cur) - 1;
+      const cards = el('div', 'compare');
+      cards.append(partCard(cur, t('mounted')), partCard(p, t('new_part')));
+      const verdict = el('div', 'verdict ' + (delta > 0 ? 'pos' : 'neg'), `${delta > 0 ? '▲ +' : '▼ '}${Math.round(delta * 100)}%`);
+      const btns = el('div', 'btn-row');
+      const sell = html('button', 'btn ghost', `<span>${t('sell')}</span>${cost('coin', G.partSell(p))}`);
+      const mount = html('button', 'btn ' + (delta > 0 ? 'ad' : 'ghost'), `<span>${t('mount')}</span>${cost('coin', G.partSell(cur))}`);
+      sell.onclick = () => { G.resolvePending(S(), false); sfx.buy(); refresh(); };
+      mount.onclick = () => { G.resolvePending(S(), true); sfx.reward(); flash(p.slot); refresh(); };
+      btns.append(sell, mount);
+      choice.append(cards, verdict, btns);
+    });
+
+    const bench = el('div', 'bench');
+    const buildBtn = html('button', 'btn build', `<span>${t('build')}</span>${cost('wrench', 1)}`);
+    buildBtn.onclick = () => {
+      const r = G.build(S());
+      if (!r) { if (S().wrenches < 1) toast(t('no_wrenches')); return; }
+      sfx.buy(); if (r.equipped) flash(r.part.slot);
+      refresh();
+    };
+    const auto = el('button', 'btn ghost side');
+    auto.onclick = () => { S().auto = !S().auto; sfx.buy(); refresh(); };
+    const shopBtn = el('button', 'btn ghost side');
+    shopBtn.onclick = showWorkshop;
+    updaters.push(() => {
+      const s = S(), busy = G.workshopBusy(s, now());
+      buildBtn.disabled = s.wrenches < 1;
+      const a = `<span>${t('auto')}</span><span class="b2">${s.auto ? t('on') : t('off')}</span>`;
+      if (auto._l !== a) { auto._l = a; auto.innerHTML = a; auto.classList.toggle('active', s.auto); }
+      const w = `<span>${t('workshop')} ${s.workshop.level}</span><span class="b2">${busy ? fmtTime((s.workshop.upgradeEnd - now()) / 1000) : t('upgrade')}</span>`;
+      if (shopBtn._l !== w) { shopBtn._l = w; shopBtn.innerHTML = w; }
+      shopBtn.classList.toggle('ready', !busy && s.coins >= G.workshopCost(s.workshop.level) && s.workshop.level < WORKSHOP_MAX);
+    });
+    bench.append(auto, buildBtn, shopBtn);
+    panel.append(choice, bench, el('p', 'hint center', t('workshop_hint')));
+  }
+  function flash(slot) {
+    const b = panel.querySelector(`.slot[data-slot="${slot}"]`);
+    if (b) { b.classList.remove('flash'); void b.offsetWidth; b.classList.add('flash'); }
+  }
+
+  function showWorkshop() {
+    const body = el('div', 'ws');
+    let timer = null;
+    const m = openModal({ title: '', icon: 'wrench', body, buttons: [{ label: t('close'), kind: 'ghost' }], onClose: () => clearInterval(timer) });
+    const draw = () => {
+      const s = S(), L = s.workshop.level, busy = G.workshopBusy(s, now()), key = `${L}:${busy}`;
+      m.title.textContent = `${t('workshop')} ${L}`;
+      if (body._k !== key) {
+        body._k = key; body.replaceChildren(); body._left = body._skip = body._up = null;
+        const odds = G.tierOdds(L), next = L < WORKSHOP_MAX ? G.tierOdds(L + 1) : null;
+        body.append(el('p', '', t('workshop_d', G.partMaxLevel(L))));
+        const table = el('div', 'odds');
+        TIERS.forEach((tier, i) => {
+          if (!odds[i] && !(next && next[i])) return;
+          const r = el('div', 'odds-row'); r.style.setProperty('--tier', tier.color);
+          r.append(el('span', 'odds-name', t('tier_' + tier.id)), el('span', 'num', (odds[i] * 100).toFixed(1) + '%'));
+          if (next) r.append(el('span', 'num odds-next', '→ ' + (next[i] * 100).toFixed(1) + '%'));
+          table.append(r);
+        });
+        body.append(table);
+        const act = el('div', 'ws-act');
+        if (L >= WORKSHOP_MAX) act.append(el('p', 'hint center', t('max')));
+        else if (busy) {
+          const left = el('div', 'big-coins ws-left'); body._left = left;
+          const speed = html('button', 'btn ad', `${adHtml(t('speed_up'))}`);
+          speed.onclick = () => rewarded(() => { G.speedWorkshopUpgrade(S(), AD_SPEEDUP_SECONDS, now()); G.finishWorkshopUpgrade(S(), now()); draw(); });
+          const skip = el('button', 'btn gem'); body._skip = skip;
+          skip.onclick = () => { if (G.skipWorkshopUpgrade(S(), now())) { sfx.reward(); app.save(); refresh(); draw(); } else toast(t('not_enough_gems')); };
+          const row2 = el('div', 'btn-row'); row2.append(speed, skip);
+          act.append(left, row2);
+        } else {
+          const up = html('button', 'btn primary wide', `<span>${t('upgrade')} · ${fmtTime(G.workshopSeconds(L))}</span>${cost('coin', G.workshopCost(L))}`);
+          up.disabled = s.coins < G.workshopCost(L); body._up = up;
+          up.onclick = () => { if (G.startWorkshopUpgrade(S(), now())) { sfx.buy(); app.save(); refresh(); draw(); } };
+          act.append(up);
+        }
+        body.append(act);
+      }
+      if (body._left && busy) {
+        body._left.textContent = fmtTime((s.workshop.upgradeEnd - now()) / 1000);
+        const g = `<span>${t('finish_now')}</span>${cost('gem', G.skipGems(s, now()))}`;
+        if (body._skip._l !== g) { body._skip._l = g; body._skip.innerHTML = g; }
+      }
+      if (body._up && !busy) body._up.disabled = s.coins < G.workshopCost(L);
+    };
+    draw();
+    timer = setInterval(draw, 400);
+  }
+
+  function tabSquad() {
+    const top = el('div', 'bar');
+    top.append(seg([['pilots', t('wingmen')], ['hangar', t('hangar')]], () => squadView, (v) => { squadView = v; render(); }));
+    if (squadView === 'pilots') top.append(buyModeBar());
+    panel.append(top);
+    if (squadView === 'hangar') return hangar();
+    const total = el('p', 'hint');
+    updaters.push(() => { total.textContent = t('pilot_total', Math.round((G.pilotBonus(S()) - 1) * 100)); });
+    panel.append(total);
+    PILOTS.forEach((p, i) => {
+      const x = row({ iconEl: planeIcon('mono', p.color), title: '' });
+      x.btn.onclick = () => { if (G.buyPilot(S(), p.id)) { sfx.buy(); refresh(); } };
+      updaters.push(() => {
+        const s = S(), lvl = s.pilots[p.id] || 0, q = G.quote(s, p.id);
+        const visible = i === 0 || lvl > 0 || (s.pilots[PILOTS[i - 1].id] || 0) > 0;
+        x.r.classList.toggle('locked', !visible);
+        x.name.textContent = visible ? `${t('p_' + p.id)}${lvl ? ` · ${t('lvl')} ${lvl}` : ''}` : '———';
+        x.sub.textContent = !visible ? t('locked') : t('pilot_d', Math.round(PILOT_BONUS * 100), Math.round(lvl * PILOT_BONUS * 100));
+        setBtn(x, lvl ? `+${q.n} ${t('lvl')}` : t('hire'), cost('coin', q.cost), visible && s.coins >= q.cost);
       });
       panel.append(x.r);
-    }
+    });
   }
 
   function hangar() {
@@ -194,67 +327,14 @@ export function createUI(app) {
     }
   }
 
-  function tabSquad() {
-    const top = el('div', 'bar'); top.append(el('span', 'hint', ''), buyModeBar()); panel.append(top);
-    PILOTS.forEach((p, i) => {
-      const x = row({ iconEl: planeIcon('mono', p.color), title: '' });
-      x.btn.onclick = () => { if (G.buy(S(), 'pilot', p.id)) { sfx.buy(); refresh(); } };
-      updaters.push(() => {
-        const s = S(), lvl = s.pilots[p.id] || 0, q = G.quote(s, 'pilot', p.id);
-        const visible = i === 0 || lvl > 0 || (s.pilots[PILOTS[i - 1].id] || 0) > 0;
-        x.r.classList.toggle('locked', !visible);
-        x.name.textContent = visible ? `${t('p_' + p.id)}${lvl ? ` · ${t('lvl')} ${lvl}` : ''}` : '———';
-        x.sub.textContent = !visible ? t('locked')
-          : lvl ? t('pilot_d', fmt(G.pilotDps(s, p.id))) : t('pilot_new', fmt(p.baseDps * G.globalMult(s)));
-        setBtn(x, lvl ? `+${q.n} ${t('lvl')}` : t('hire'), cost('coin', q.cost), visible && s.coins >= q.cost);
-      });
-      panel.append(x.r);
-    });
-  }
-
-  function tabCommand() {
-    const card = el('div', 'card'), bonus = el('div', 'sub');
-    const btn = el('button', 'btn primary wide');
-    card.append(html('div', 'name', withIcon('medal', t('prestige'))), el('p', 'sub', t('prestige_d')), bonus, btn);
-    btn.onclick = () => {
-      const gain = G.medalsOnPrestige(S());
-      if (!gain) return;
-      openModal({
-        title: t('prestige'), icon: 'medal', body: t('prestige_confirm'),
-        buttons: [
-          { label: t('cancel'), kind: 'ghost' },
-          { label: t('prestige_btn', gain), onClick: () => { G.prestige(S()); sfx.boss(); app.save(); render(); } },
-        ],
-      });
-    };
-    updaters.push(() => {
-      const s = S(), gain = G.medalsOnPrestige(s);
-      bonus.textContent = t('prestige_bonus', Math.round((G.medalBonus(s) - 1) * 100));
-      btn.textContent = gain ? t('prestige_btn', gain) : t('prestige_req', PRESTIGE_MIN_STAGE);
-      btn.disabled = !gain;
-    });
-    panel.append(card, heading(t('talents')));
-
-    for (const tl of TALENTS) {
-      const x = row({ icon: tl.icon, title: '' });
-      x.sub.textContent = t(`t_${tl.id}_d`);
-      x.btn.onclick = () => { if (G.buyTalent(S(), tl.id)) { sfx.reward(); app.save(); refresh(); } };
-      updaters.push(() => {
-        const s = S(), lvl = s.talents[tl.id] || 0;
-        x.name.textContent = `${t('t_' + tl.id)} · ${lvl}/${tl.max}`;
-        if (lvl >= tl.max) setBtn(x, t('max'), '', false, 'done');
-        else setBtn(x, `+1 ${t('lvl')}`, cost('medal', G.talentCost(s, tl.id)), s.medals >= G.talentCost(s, tl.id), 'medal');
-      });
-      panel.append(x.r);
-    }
-
+  function tabGoals() {
     panel.append(heading(t('missions')));
     for (const m of MISSIONS) {
-      const x = row({ icon: 'target', title: t('m_' + m.stat, fmt(m.goal)) });
+      const x = row({ icon: 'target', title: t('m_' + m.stat, m.stat === 'maxStage' ? G.stageName(m.goal) : fmt(m.goal)) });
       x.btn.onclick = () => { if (G.claimMission(S(), m.id)) { sfx.reward(); app.save(); refresh(); } };
       updaters.push(() => {
         const s = S(), have = Math.min(s.stats[m.stat] || 0, m.goal);
-        x.sub.textContent = `${fmt(have)} / ${fmt(m.goal)}`;
+        x.sub.textContent = m.stat === 'maxStage' ? `${G.stageName(have)} / ${G.stageName(m.goal)}` : `${fmt(have)} / ${fmt(m.goal)}`;
         if (s.missions[m.id]) setBtn(x, ic('check'), '', false, 'done');
         else setBtn(x, t('claim'), cost('gem', m.gems), G.missionDone(s, m), 'gem');
       });
@@ -273,14 +353,19 @@ export function createUI(app) {
       setBtn(daily, avail ? t('claim') : t('come_back'), '', avail, avail ? 'gem' : 'done');
     });
 
-    const adGems = row({ icon: 'gem', title: t('ad_gems', AD_GEMS) });
-    adGems.sub.textContent = t('ad_gems_d');
-    adGems.btn.onclick = () => rewarded(() => { S().gems += AD_GEMS; S().adGemsAt = now() + AD_GEMS_COOLDOWN * 1000; });
-    updaters.push(() => {
-      const left = (S().adGemsAt - now()) / 1000;
-      if (left > 0) setBtn(adGems, t('ready_in', fmtTime(left)), '', false, 'done');
-      else setBtn(adGems, adHtml(t('watch')), '', true, 'ad');
-    });
+    const timedAd = (icon, title, sub, key, cooldown, grant) => {
+      const x = row({ icon, title });
+      x.sub.textContent = sub;
+      x.btn.onclick = () => rewarded(() => { grant(); S()[key] = now() + cooldown * 1000; });
+      updaters.push(() => {
+        const left = (S()[key] - now()) / 1000;
+        if (left > 0) setBtn(x, t('ready_in', fmtTime(left)), '', false, 'done');
+        else setBtn(x, adHtml(t('watch')), '', true, 'ad');
+      });
+      return x.r;
+    };
+    const adWrench = timedAd('wrench', t('ad_wrenches', AD_WRENCHES), t('ad_gems_d'), 'adWrenchAt', AD_WRENCH_COOLDOWN, () => { S().wrenches += AD_WRENCHES; });
+    const adGems = timedAd('gem', t('ad_gems', AD_GEMS), t('ad_gems_d'), 'adGemsAt', AD_GEMS_COOLDOWN, () => { S().gems += AD_GEMS; });
 
     const boost = row({ icon: 'flame', title: t('ad_boost') });
     boost.btn.onclick = () => rewarded(() => G.addBoost(S(), AD_BOOST_SECONDS, now()));
@@ -290,19 +375,16 @@ export function createUI(app) {
       setBtn(boost, adHtml(t('watch')), '', true, 'ad');
     });
 
-    const warp = row({ icon: 'warp', title: t('warp') });
-    warp.btn.onclick = () => {
+    const pack = row({ icon: 'wrench', title: t('wrench_pack', WRENCH_PACK.wrenches) });
+    pack.sub.textContent = t('wrench_pack_d');
+    pack.btn.onclick = () => {
       const s = S();
-      if (s.gems < WARP_GEMS) { toast(t('not_enough_gems')); return; }
-      s.gems -= WARP_GEMS; s.coins += Math.floor(G.incomePerSec(s, now()) * WARP_SECONDS);
+      if (s.gems < WRENCH_PACK.gems) { toast(t('not_enough_gems')); return; }
+      s.gems -= WRENCH_PACK.gems; s.wrenches += WRENCH_PACK.wrenches;
       sfx.reward(); app.save(); refresh();
     };
-    updaters.push(() => {
-      const s = S();
-      warp.sub.textContent = `${t('warp_d')} (+${fmt(G.incomePerSec(s, now()) * WARP_SECONDS)})`;
-      setBtn(warp, t('buy'), cost('gem', WARP_GEMS), s.gems >= WARP_GEMS, 'gem');
-    });
-    panel.append(daily.r, adGems.r, boost.r, warp.r, heading(t('shop_iap')));
+    updaters.push(() => setBtn(pack, t('buy'), cost('gem', WRENCH_PACK.gems), S().gems >= WRENCH_PACK.gems, 'gem'));
+    panel.append(daily.r, adWrench, adGems, boost.r, pack.r, heading(t('shop_iap')));
 
     for (const p of PRODUCTS) {
       const x = row({ icon: p.icon, title: t('pr_' + p.id) });
@@ -339,8 +421,8 @@ export function createUI(app) {
   const online = createOnlineUI(kit);
 
   const TABS = [
-    ['plane', 'plane', tabPlane], ['squad', 'squad', tabSquad], ['arena', 'swords', () => online.tabArena()],
-    ['ally', 'shield', () => online.tabAlliance()], ['cmd', 'star', tabCommand], ['shop', 'shop', tabShop],
+    ['work', 'wrench', tabWorkshop], ['squad', 'squad', tabSquad], ['arena', 'swords', () => online.tabArena()],
+    ['ally', 'shield', () => online.tabAlliance()], ['goals', 'star', tabGoals], ['shop', 'shop', tabShop],
   ];
 
   function render() {
@@ -366,9 +448,9 @@ export function createUI(app) {
     const s = S(), n = now();
     $('#coins').textContent = fmt(s.coins);
     $('#gems').textContent = fmt(s.gems);
-    $('#medals').textContent = fmt(s.medals);
+    $('#wrenches').textContent = fmt(Math.floor(s.wrenches));
     const e = s.enemy, boss = e?.boss;
-    $('#stage-name').textContent = boss ? `${t('boss')} · ${t('stage')} ${s.stage}` : `${t('stage')} ${s.stage}`;
+    $('#stage-name').textContent = boss ? `${t('boss')} · ${G.stageName(s.stage)}` : `${t('stage')} ${G.stageName(s.stage)}`;
     $('#stage-info').textContent = boss ? s.bossTimer.toFixed(1) + 's'
       : s.farming ? t('farming') : `${s.kills}/${KILLS_PER_STAGE}`;
     $('#stagebar').classList.toggle('boss', !!boss);
@@ -388,8 +470,9 @@ export function createUI(app) {
     if (boostLeft > 0) $('#boost-text').textContent = `${t('boost_on')} · ${fmtTime(boostLeft)}`;
     $('#tap-hint').hidden = s.stats.taps >= 3;
     const badge = {
-      cmd: G.claimableMissions(s) > 0 || (G.medalsOnPrestige(s) > 0 && s.stats.prestiges === 0),
-      shop: G.dailyAvailable(s, n) || s.adGemsAt <= n,
+      goals: G.claimableMissions(s) > 0,
+      work: !!s.pending || (s.wrenches >= 1 && !s.auto),
+      shop: G.dailyAvailable(s, n),
     };
     for (const b of $('#tabs').children) b.classList.toggle('has-badge', !!badge[b.dataset.tab]);
     for (const u of updaters) u();
@@ -397,17 +480,17 @@ export function createUI(app) {
   }
 
   // ---------- finestre di gioco ----------
-  function coinBody(desc, coins) {
+  function coinBody(desc, coins, wrenches = 0) {
     const body = el('div');
-    body.append(el('p', '', desc), html('div', 'big-coins', cost('coin', coins)));
+    body.append(el('p', '', desc), html('div', 'big-coins', cost('coin', coins) + (wrenches ? ' &nbsp; ' + cost('wrench', wrenches) : '')));
     return body;
   }
 
-  function showOffline(secs, coins) {
+  function showOffline(secs, coins, wrenches) {
     const s = S();
-    s.coins += coins; app.save();
+    s.coins += coins; s.wrenches += wrenches; app.save();
     openModal({
-      title: t('offline'), icon: 'moon', body: coinBody(t('offline_d', fmtTime(secs)), coins),
+      title: t('offline'), icon: 'moon', body: coinBody(t('offline_d', fmtTime(secs)), coins, wrenches),
       buttons: [
         { label: t('collect'), kind: 'ghost' },
         { label: t('double_it'), icon: adIcon(), kind: 'ad', onClick: () => rewarded(() => { S().coins += coins; }).then(() => true) },
@@ -473,6 +556,7 @@ export function createUI(app) {
   $('#btn-chat').onclick = () => online.openChat();
   $('#btn-boss').onclick = (ev) => { ev.stopPropagation(); if (G.challengeBoss(S())) { sfx.boss(); refresh(); } };
   $('#boost-chip').onclick = (ev) => { ev.stopPropagation(); tab = 'shop'; render(); };
+  $('#cur-wrench').onclick = () => { tab = 'shop'; render(); };
 
-  return { render, refresh, toast, banner, showOffline, showDrop, closeTopModal, hasModal: () => modalCount > 0 };
+  return { render, refresh, toast, banner, showOffline, showDrop, closeTopModal, flash, hasModal: () => modalCount > 0 };
 }

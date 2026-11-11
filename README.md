@@ -9,33 +9,46 @@ Il gioco è una web app (Vite, JavaScript senza framework, grafica su canvas) im
 
 ## Come si gioca
 
-- **Battaglia automatica**: 10 nemici per missione, un boss a tempo ogni 5. Toccando il cielo lanci razzi.
+Il ciclo di gioco è quello degli idle RPG "a forgia": si costruiscono pezzi casuali, si tengono i migliori e
+si avanza finché il livello dell'officina lo permette.
+
+- **Officina**: ogni chiave inglese costruisce un pezzo a caso per uno degli 8 posti dell'aereo (mitragliatrici,
+  motore, elica, mirino, fusoliera, ali, corazza, carrello). Il pezzo ha un livello, una qualità tra 7 (da Tela
+  a Leggenda) e, se non è comune, un bonus secondario. Lo si monta al posto del vecchio oppure lo si vende.
+  La costruzione automatica monta da sola i pezzi migliori e vende gli altri.
+- **Livello dell'officina**: decide il livello massimo dei pezzi e le probabilità delle qualità rare. Si
+  potenzia con le monete e richiede tempo reale (da 20 secondi a più giorni); il tempo si accorcia con un
+  video o si salta con le gemme.
+- **Missioni a capitoli** (1-1, 1-2 … 1-10): 6 nemici per missione, boss a tempo alla decima. Completare una
+  missione dà chiavi inglesi. Toccando il cielo si lanciano razzi.
 - **Vita della squadriglia**: i nemici sparano. La vita si ricarica a ogni missione; se finisce si arretra di
   una missione e si resta in pattuglia finché non si decide di avanzare di nuovo.
-- **Aereo**: 6 potenziamenti in monete (tra cui la corazza) e 5 aerei comprati con le gemme, che moltiplicano
-  danno e vita e restano per sempre. **Squadra**: 8 gregari che aggiungono danno e vita.
+- **Squadra**: 8 gregari comprati con le monete, ogni livello dà +3% a danno e vita. 5 aerei comprati con le
+  gemme moltiplicano danno e vita e restano per sempre.
 - **Arena PvP**: duelli contro altri giocatori dello stesso server, biglietti che si ricaricano, trofei, leghe
   e classifica. Vince chi ha più potenza (danno × vita).
 - **Alleanza**: fino a 20 piloti, bonus al danno che cresce col livello, donazioni, boss da abbattere insieme,
   guerra quotidiana contro un'alleanza rivale di forza simile.
 - **Chat**: canale globale del server e canale dell'alleanza, con filtro e segnalazione dei messaggi.
-- **Comando**: Nuova Campagna (prestigio) dalla missione 25, talenti in medaglie, obiettivi che danno gemme.
-- **Guadagni offline** fino a 2 ore (8 con i talenti), premio giornaliero, rifornimenti aerei da toccare.
+- **Guadagni offline** fino a 4 ore (monete e chiavi inglesi), premio giornaliero, obiettivi, rifornimenti aerei.
 
 ## Monetizzazione
 
 | Fonte | Dove | Cosa dà |
 | --- | --- | --- |
+| Video con premio | Officina | 30 minuti in meno sul potenziamento in corso |
+| Video con premio | Negozio | 25 chiavi inglesi ogni 10 minuti, 5 gemme ogni 15, monete ×2 per 15 minuti |
 | Video con premio | Ritorno dopo l'assenza | Raddoppia le monete offline |
 | Video con premio | Cassa del rifornimento aereo | Premio in monete molto più grande |
-| Video con premio | Negozio | 5 gemme ogni 15 minuti, monete ×2 per 15 minuti |
 | Video con premio | Arena | Ricarica dei biglietti (3 volte al giorno) |
+| Gemme | Officina, Negozio, Hangar | Completare subito un potenziamento, 60 chiavi inglesi, aerei, fondare un'alleanza |
 | Acquisto | `gems_80`, `gems_500`, `gems_1200`, `gems_3000` | Pacchetti di gemme (consumabili) |
-| Acquisto | `starter_pack` | 300 gemme + 30 minuti di monete ×2, una volta sola (consumabile) |
+| Acquisto | `starter_pack` | 300 gemme + 200 chiavi inglesi, una volta sola (consumabile) |
 | Acquisto | `double_coins` | Monete ×2 per sempre (non consumabile) |
 | Acquisto | `remove_ads` | Tutti i premi video senza guardare annunci (non consumabile) |
 
 Non ci sono annunci forzati: negli idle sono i video scelti dal giocatore a rendere, e non fanno disinstallare.
+Le due leve principali sono le chiavi inglesi (per costruire di più) e i tempi dell'officina.
 Un banner in basso è già previsto ma spento (`banner.enabled` in `src/config.js`).
 
 ## Sviluppo
@@ -112,7 +125,7 @@ personali un test chiuso con più tester prima del rilascio pubblico.
 
 ## Stato
 
-Provato nel browser in emulazione telefono: combattimento, acquisti, video di prova, prestigio, salvataggio,
+Provato nel browser in emulazione telefono: officina, combattimento, acquisti, video di prova, salvataggio,
 guadagni offline, arena, alleanza, guerra e chat in modalità demo. Il server è coperto dai test e provato in
 locale via HTTP, non ancora messo in rete né provato con giocatori veri. L'integrazione nativa con AdMob e RevenueCat segue le API dei plugin installati ma **non è
 stata ancora eseguita su un dispositivo**: va verificata con gli ID di test prima del rilascio.

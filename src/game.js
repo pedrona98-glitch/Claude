@@ -1,31 +1,33 @@
 // Logica di gioco pura: nessun accesso a DOM o storage, così è testabile con Node.
 import {
-  KILLS_PER_STAGE, BOSS_EVERY, BOSS_TIME, PRESTIGE_MIN_STAGE, OFFLINE_BASE_HOURS,
-  BOOST_MAX_SECONDS, ALLIANCE_BONUS_PER_LEVEL, UPGRADES, PILOTS, AIRCRAFT, TALENTS, MISSIONS, DAILY_GEMS,
+  KILLS_PER_STAGE, STAGES_PER_CHAPTER, BOSS_TIME, OFFLINE_HOURS, BOOST_MAX_SECONDS, ALLIANCE_BONUS_PER_LEVEL,
+  SLOTS, TIERS, SUBSTATS, WORKSHOP_MAX, PILOTS, PILOT_BONUS, AIRCRAFT, MISSIONS, DAILY_GEMS, WRENCHES_PER_STAGE,
 } from './data.js';
 
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 const SPAWN_DELAY = 0.35;
-const PILOT_GROWTH = 1.07;
+const PILOT_GROWTH = 1.1;
 
 const byId = (list) => Object.fromEntries(list.map((x) => [x.id, x]));
-const UP = byId(UPGRADES), PILOT = byId(PILOTS), PLANE = byId(AIRCRAFT), TALENT = byId(TALENTS);
+const SLOT = byId(SLOTS), PILOT = byId(PILOTS), PLANE = byId(AIRCRAFT);
 
 export function newState(now = Date.now()) {
   return {
     v: SAVE_VERSION,
-    coins: 0, gems: 0, medals: 0,
+    coins: 0, gems: 0, wrenches: 30,
     stage: 1, kills: 0, farming: false, bossTimer: 0,
-    up: { cannon: 1, armor: 1, rate: 0, crit: 0, critDmg: 0, cargo: 0 },
+    parts: {},                       // slot -> pezzo montato
+    pending: null,                   // pezzo appena costruito, in attesa di scelta
+    auto: false,
+    workshop: { level: 1, upgradeEnd: 0 },
     pilots: {},
     aircraft: { owned: ['libellula'], equipped: 'libellula' },
-    talents: {},
     perks: { noAds: false, doubleCoins: false },
     purchased: {},
-    boostUntil: 0, adGemsAt: 0,
+    boostUntil: 0, adGemsAt: 0, adWrenchAt: 0,
     missions: {},
     daily: { day: 0, last: '' },
-    stats: { maxStage: 1, runMaxStage: 1, kills: 0, bosses: 0, prestiges: 0, taps: 0, bossBest: 0 },
+    stats: { maxStage: 1, kills: 0, bosses: 0, taps: 0, builds: 0, bossBest: 0 },
     settings: { sound: true, lang: null },
     buyMode: 1,
     lastSeen: now,
@@ -35,97 +37,176 @@ export function newState(now = Date.now()) {
   };
 }
 
+const RUNTIME = ['enemy', 'shotTimer', 'spawnTimer', 'hp'];
+// Dai salvataggi della versione precedente si conserva solo ciò che è stato comprato o scelto.
+const KEEP_FROM_OLD = ['gems', 'aircraft', 'perks', 'purchased', 'settings', 'online', 'daily', 'adGemsAt'];
+
 /** Unisce un salvataggio (anche vecchio o parziale) sopra uno stato nuovo. */
 export function loadState(raw, now = Date.now()) {
   const s = newState(now);
   if (!raw || typeof raw !== 'object') return s;
-  for (const k of Object.keys(s)) {
-    if (['enemy', 'shotTimer', 'spawnTimer', 'hp', 'v'].includes(k) || raw[k] == null) continue;
+  const keys = raw.v === SAVE_VERSION ? Object.keys(s) : KEEP_FROM_OLD;
+  for (const k of keys) {
+    if (RUNTIME.includes(k) || k === 'v' || raw[k] == null) continue;
+    if (k === 'parts' || k === 'pending') { if (typeof raw[k] === 'object') s[k] = raw[k]; continue; }
     if (typeof s[k] === 'object' && !Array.isArray(s[k])) Object.assign(s[k], raw[k]);
     else if (typeof raw[k] === typeof s[k]) s[k] = raw[k];
   }
-  for (const k of ['coins', 'gems', 'medals']) if (!isFinite(s[k]) || s[k] < 0) s[k] = 0;
+  for (const k of ['coins', 'gems', 'wrenches']) if (!isFinite(s[k]) || s[k] < 0) s[k] = 0;
   s.stage = Math.max(1, Math.floor(s.stage) || 1);
   if (!s.aircraft.owned.includes(s.aircraft.equipped)) s.aircraft.equipped = 'libellula';
+  for (const k of Object.keys(s.parts)) if (!SLOT[k] || !validPart(s.parts[k])) delete s.parts[k];
+  if (s.pending && !validPart(s.pending)) s.pending = null;
   if (isBoss(s.stage)) { s.stage -= 1; s.farming = true; s.kills = 0; } // mai riprendere a metà boss
   return s;
 }
+const validPart = (p) => p && SLOT[p.slot] && Number.isFinite(p.lvl) && TIERS[p.tier];
 
 export function serialize(s) {
   const { enemy, shotTimer, spawnTimer, hp, ...rest } = s;
   return rest;
 }
 
-// ---------- formule ----------
-export const isBoss = (stage) => stage % BOSS_EVERY === 0;
-export const enemyHp = (stage) => Math.ceil(18 * Math.pow(1.24, stage - 1) * (isBoss(stage) ? 6 : 1));
-export const coinReward = (stage) => Math.ceil(2 * Math.pow(1.15, stage - 1) * (isBoss(stage) ? 12 : 1));
-export const bossTime = (s) => BOSS_TIME + 5 * (s.talents.clock || 0);
+// ---------- missioni e nemici ----------
+export const chapterOf = (stage) => Math.floor((stage - 1) / STAGES_PER_CHAPTER) + 1;
+export const stageName = (stage) => `${chapterOf(stage)}-${((stage - 1) % STAGES_PER_CHAPTER) + 1}`;
+export const isBoss = (stage) => stage % STAGES_PER_CHAPTER === 0;
+export const enemyHp = (stage) => Math.ceil(20 * Math.pow(1.11, stage - 1) * (isBoss(stage) ? 6 : 1));
+export const enemyAtk = (stage) => 1.1 * Math.pow(1.11, stage - 1) * (isBoss(stage) ? 2.5 : 1);
+export const coinReward = (stage) => Math.ceil(3 * Math.pow(1.085, stage - 1) * (isBoss(stage) ? 10 : 1));
 
-const milestone = (lvl) => Math.pow(4, Math.floor(lvl / 25));
-
-export function upgradeCost(id, lvl) { return Math.ceil(UP[id].baseCost * Math.pow(UP[id].growth, lvl - (id === 'cannon' || id === 'armor' ? 1 : 0))); }
-export function pilotCost(id, lvl) { return Math.ceil(PILOT[id].baseCost * Math.pow(PILOT_GROWTH, lvl)); }
-
-/** Costo di n livelli consecutivi e massimo acquistabile (serie geometrica). */
-function bulk(costFn, growth, lvl, n) {
-  return Math.ceil(costFn(lvl) * (Math.pow(growth, n) - 1) / (growth - 1));
+// ---------- officina e pezzi ----------
+export const partMaxLevel = (workshopLevel) => 4 + 3 * workshopLevel;
+export const maxTier = (workshopLevel) => Math.min(TIERS.length - 1, 1 + Math.floor(workshopLevel / 4));
+/** Probabilità di ogni qualità al livello officina dato (somma 1). */
+export function tierOdds(workshopLevel) {
+  const r = Math.min(0.72, 0.16 + 0.022 * workshopLevel), top = maxTier(workshopLevel);
+  const w = TIERS.map((_, t) => (t <= top ? Math.pow(r, t) : 0));
+  const sum = w.reduce((a, b) => a + b, 0);
+  return w.map((x) => x / sum);
 }
-function maxAfford(costFn, growth, lvl, coins) {
-  const c = costFn(lvl);
-  if (coins < c) return 0;
-  let n = Math.floor(Math.log(coins * (growth - 1) / c + 1) / Math.log(growth));
-  while (n > 0 && bulk(costFn, growth, lvl, n) > coins) n--;
-  return n;
+export const partMain = (p) => SLOT[p.slot].base * Math.pow(1.12, p.lvl) * TIERS[p.tier].mult;
+export const partSell = (p) => Math.ceil(3 * Math.pow(1.12, p.lvl) * TIERS[p.tier].mult);
+
+export function rollPart(workshopLevel, rnd = Math.random) {
+  const slot = SLOTS[Math.floor(rnd() * SLOTS.length)].id;
+  const lvl = Math.max(1, partMaxLevel(workshopLevel) - Math.floor(rnd() * rnd() * 7));
+  const odds = tierOdds(workshopLevel);
+  let roll = rnd(), tier = 0;
+  while (tier < odds.length - 1 && roll >= odds[tier]) { roll -= odds[tier]; tier++; }
+  const part = { slot, lvl, tier };
+  if (tier > 0) {
+    const sub = SUBSTATS[Math.floor(rnd() * SUBSTATS.length)];
+    part.sub = sub.id; part.val = Math.round(sub.unit * (1 + tier) * (0.6 + 0.4 * rnd()) * 10) / 10;
+  }
+  return part;
 }
 
-/** Quanti livelli comprerebbe la modalità corrente (1, 10 o 'max') e a che prezzo. */
-export function quote(s, kind, id) {
-  const isUp = kind === 'up';
-  const lvl = isUp ? s.up[id] : (s.pilots[id] || 0);
-  const growth = isUp ? UP[id].growth : PILOT_GROWTH;
-  const costFn = isUp ? (l) => upgradeCost(id, l) : (l) => pilotCost(id, l);
-  const cap = isUp ? UP[id].max - lvl : Infinity;
-  if (cap <= 0) return { n: 0, cost: 0, maxed: true };
-  let n = s.buyMode === 'max' ? Math.max(1, maxAfford(costFn, growth, lvl, s.coins)) : s.buyMode;
-  n = Math.min(n, cap);
-  return { n, cost: bulk(costFn, growth, lvl, n), maxed: false };
+/** Costruisce un pezzo. Lo slot vuoto si riempie da solo; altrimenti resta in attesa di monta/vendi. */
+export function build(s, rnd = Math.random) {
+  if (s.pending || s.wrenches < 1) return null;
+  s.wrenches -= 1; s.stats.builds++;
+  const part = rollPart(s.workshop.level, rnd);
+  if (!s.parts[part.slot]) { s.parts[part.slot] = part; return { part, equipped: true }; }
+  s.pending = part;
+  return { part, equipped: false };
+}
+export const isUpgrade = (s, part) => !s.parts[part.slot] || partMain(part) > partMain(s.parts[part.slot]);
+/** Monta il pezzo in attesa (vendendo quello vecchio) oppure lo vende. Restituisce le monete incassate. */
+export function resolvePending(s, equip) {
+  const part = s.pending;
+  if (!part) return 0;
+  s.pending = null;
+  const sold = equip ? s.parts[part.slot] : part;
+  if (equip) s.parts[part.slot] = part;
+  const coins = sold ? partSell(sold) : 0;
+  s.coins += coins;
+  return coins;
+}
+/** Costruzione automatica: monta se migliora, altrimenti vende. */
+export function autoBuild(s, rnd = Math.random) {
+  const r = build(s, rnd);
+  if (!r) return null;
+  if (!r.equipped) { r.equipped = isUpgrade(s, r.part); r.coins = resolvePending(s, r.equipped); }
+  return r;
 }
 
-export const medalBonus = (s) => 1 + 0.1 * s.medals;
+export const workshopCost = (level) => Math.ceil(60 * Math.pow(1.75, level - 1));
+export const workshopSeconds = (level) => Math.round(20 * Math.pow(1.62, level - 1));
+export const workshopBusy = (s, now) => s.workshop.upgradeEnd > now;
+export function startWorkshopUpgrade(s, now) {
+  const w = s.workshop, cost = workshopCost(w.level);
+  if (w.upgradeEnd || w.level >= WORKSHOP_MAX || s.coins < cost) return false;
+  s.coins -= cost; w.upgradeEnd = now + workshopSeconds(w.level) * 1000;
+  return true;
+}
+/** Da chiamare periodicamente: completa il potenziamento quando il tempo è scaduto. */
+export function finishWorkshopUpgrade(s, now) {
+  const w = s.workshop;
+  if (!w.upgradeEnd || w.upgradeEnd > now) return false;
+  w.upgradeEnd = 0; w.level++;
+  return true;
+}
+export const skipGems = (s, now) => Math.max(1, Math.ceil((s.workshop.upgradeEnd - now) / 1000 / 180));
+export function skipWorkshopUpgrade(s, now) {
+  if (!workshopBusy(s, now)) return false;
+  const gems = skipGems(s, now);
+  if (s.gems < gems) return false;
+  s.gems -= gems; s.workshop.upgradeEnd = now;
+  return finishWorkshopUpgrade(s, now);
+}
+export function speedWorkshopUpgrade(s, seconds, now) {
+  if (workshopBusy(s, now)) s.workshop.upgradeEnd = Math.max(now, s.workshop.upgradeEnd - seconds * 1000);
+}
+
+// ---------- statistiche ----------
+const sumMain = (s, stat) => SLOTS.reduce((t, sl) => t + (sl.stat === stat && s.parts[sl.id] ? partMain(s.parts[sl.id]) : 0), 0);
+export const subTotal = (s, id) => SLOTS.reduce((t, sl) => t + (s.parts[sl.id] && s.parts[sl.id].sub === id ? s.parts[sl.id].val : 0), 0);
+export const pilotLevels = (s) => PILOTS.reduce((t, p) => t + (s.pilots[p.id] || 0), 0);
+export const pilotBonus = (s) => 1 + PILOT_BONUS * pilotLevels(s);
 export const allianceBonus = (s) => 1 + ALLIANCE_BONUS_PER_LEVEL * (s.online.allyLevel || 0);
-export const globalMult = (s) => PLANE[s.aircraft.equipped].mult * medalBonus(s) * allianceBonus(s);
-export const shotDamage = (s) => 2 * s.up.cannon * milestone(s.up.cannon) * globalMult(s);
-export const fireRate = (s) => 1.5 + 0.075 * s.up.rate;
-export const critChance = (s) => 0.05 + 0.01 * s.up.crit;
-export const critMult = (s) => 2 + 0.1 * s.up.critDmg;
+export const globalMult = (s) => PLANE[s.aircraft.equipped].mult * allianceBonus(s) * pilotBonus(s);
+export const shotDamage = (s) => (4 + sumMain(s, 'atk')) * globalMult(s);
+export const squadMaxHp = (s) => (60 + sumMain(s, 'hp')) * globalMult(s);
+export const fireRate = (s) => 1.5 * (1 + subTotal(s, 'rate') / 100);
+export const critChance = (s) => Math.min(0.75, 0.05 + subTotal(s, 'crit') / 100);
+export const critMult = (s) => 2 + subTotal(s, 'critDmg') / 100;
 export const tapDamage = (s) => shotDamage(s) * 2;
-export function pilotDps(s, id) {
-  const lvl = s.pilots[id] || 0;
-  return PILOT[id].baseDps * lvl * milestone(lvl) * globalMult(s);
-}
-export const squadDps = (s) => PILOTS.reduce((sum, p) => sum + pilotDps(s, p.id), 0);
-export const playerDps = (s) => shotDamage(s) * fireRate(s) * (1 + critChance(s) * (critMult(s) - 1));
-export const totalDps = (s) => squadDps(s) + playerDps(s);
-/** Vita della squadriglia: corazza dell'aereo più i gregari. Si ricarica a ogni missione. */
-export function squadMaxHp(s) {
-  const pilots = PILOTS.reduce((sum, p) => sum + p.baseDps * 4 * (s.pilots[p.id] || 0) * milestone(s.pilots[p.id] || 0), 0);
-  return (50 * s.up.armor * milestone(s.up.armor) + pilots) * globalMult(s);
-}
-export const enemyAtk = (stage) => 0.6 * Math.pow(1.24, stage - 1) * (isBoss(stage) ? 2.5 : 1);
+export const totalDps = (s) => shotDamage(s) * fireRate(s) * (1 + critChance(s) * (critMult(s) - 1));
 /** Potenza complessiva, usata in arena: conta quanto il danno quanto la resistenza. */
 export const power = (s) => Math.sqrt(totalDps(s) * squadMaxHp(s));
 
 export const boostActive = (s, now) => s.boostUntil > now;
 export function coinMult(s, now) {
-  return (1 + 0.05 * s.up.cargo) * (1 + 0.25 * (s.talents.loot || 0))
-    * (s.perks.doubleCoins ? 2 : 1) * (boostActive(s, now) ? 2 : 1);
+  return (1 + subTotal(s, 'coins') / 100) * (s.perks.doubleCoins ? 2 : 1) * (boostActive(s, now) ? 2 : 1);
 }
-
-/** Stima monete/secondo sullo stage attuale (usata per offline, rifornimenti, salto temporale). */
+/** Stima monete/secondo sulla missione attuale (usata per offline, rifornimenti, salto temporale). */
 export function incomePerSec(s, now) {
   const stage = isBoss(s.stage) ? s.stage - 1 : s.stage;
   return coinReward(stage) * coinMult(s, now) / (SPAWN_DELAY + enemyHp(stage) / totalDps(s));
+}
+
+// ---------- gregari ----------
+export function pilotCost(id, lvl) { return Math.ceil(PILOT[id].baseCost * Math.pow(PILOT_GROWTH, lvl)); }
+function bulk(costFn, lvl, n) { return Math.ceil(costFn(lvl) * (Math.pow(PILOT_GROWTH, n) - 1) / (PILOT_GROWTH - 1)); }
+function maxAfford(costFn, lvl, coins) {
+  const c = costFn(lvl);
+  if (coins < c) return 0;
+  let n = Math.floor(Math.log(coins * (PILOT_GROWTH - 1) / c + 1) / Math.log(PILOT_GROWTH));
+  while (n > 0 && bulk(costFn, lvl, n) > coins) n--;
+  return n;
+}
+/** Quanti livelli comprerebbe la modalità corrente (1, 10 o 'max') e a che prezzo. */
+export function quote(s, id) {
+  const lvl = s.pilots[id] || 0, costFn = (l) => pilotCost(id, l);
+  const n = s.buyMode === 'max' ? Math.max(1, maxAfford(costFn, lvl, s.coins)) : s.buyMode;
+  return { n, cost: bulk(costFn, lvl, n) };
+}
+export function buyPilot(s, id) {
+  const q = quote(s, id);
+  if (!q.n || s.coins < q.cost) return false;
+  s.coins -= q.cost; s.pilots[id] = (s.pilots[id] || 0) + q.n;
+  return true;
 }
 
 // ---------- combattimento ----------
@@ -133,7 +214,7 @@ function spawn(s, events) {
   const boss = isBoss(s.stage);
   const hp = enemyHp(s.stage);
   s.enemy = { hp, maxHp: hp, boss };
-  if (boss) s.bossTimer = bossTime(s);
+  if (boss) s.bossTimer = BOSS_TIME;
   if (!(s.hp > 0)) s.hp = squadMaxHp(s);
   events.push({ t: 'spawn', boss });
 }
@@ -151,16 +232,20 @@ function damage(s, dmg, now, events) {
   s.spawnTimer = SPAWN_DELAY;
   if (e.boss) {
     s.stats.bosses++;
-    if (s.stage > s.stats.bossBest) { s.stats.bossBest = s.stage; s.gems += 1; events.push({ t: 'gem', n: 1 }); }
+    if (s.stage > s.stats.bossBest) { s.stats.bossBest = s.stage; s.gems += 2; events.push({ t: 'gem', n: 2 }); }
+    clearStage(s, events, WRENCHES_PER_STAGE * 4);
     advance(s, events);
   } else if (++s.kills >= KILLS_PER_STAGE) {
+    clearStage(s, events, WRENCHES_PER_STAGE);
     if (s.farming) { s.kills = 0; s.hp = squadMaxHp(s); } else advance(s, events);
   }
 }
-
+function clearStage(s, events, wrenches) {
+  s.wrenches += wrenches;
+  events.push({ t: 'wrench', n: wrenches });
+}
 function advance(s, events) {
   s.stage++; s.kills = 0; s.hp = squadMaxHp(s);
-  s.stats.runMaxStage = Math.max(s.stats.runMaxStage, s.stage);
   s.stats.maxStage = Math.max(s.stats.maxStage, s.stage);
   events.push({ t: 'stage', stage: s.stage });
 }
@@ -174,6 +259,7 @@ function retreat(s) {
 }
 
 export function tick(s, dt, now, events = []) {
+  if (finishWorkshopUpgrade(s, now)) events.push({ t: 'workshop', level: s.workshop.level });
   if (!s.enemy) {
     s.spawnTimer -= dt;
     if (s.spawnTimer > 0) return events;
@@ -187,13 +273,12 @@ export function tick(s, dt, now, events = []) {
       return events;
     }
   }
-  s.hp -= enemyAtk(s.stage) * dt;
+  s.hp = Math.min(s.hp, squadMaxHp(s)) - enemyAtk(s.stage) * dt;
   if (s.hp <= 0) {
     retreat(s);
     events.push({ t: 'defeat' });
     return events;
   }
-  damage(s, squadDps(s) * dt, now, events);
   s.shotTimer += dt * fireRate(s);
   while (s.shotTimer >= 1) {
     s.shotTimer -= 1;
@@ -222,15 +307,7 @@ export function challengeBoss(s) {
   return true;
 }
 
-// ---------- acquisti con valute di gioco ----------
-export function buy(s, kind, id) {
-  const q = quote(s, kind, id);
-  if (!q.n || s.coins < q.cost) return false;
-  s.coins -= q.cost;
-  if (kind === 'up') s.up[id] += q.n; else s.pilots[id] = (s.pilots[id] || 0) + q.n;
-  return true;
-}
-
+// ---------- aerei ----------
 export function buyAircraft(s, id) {
   const a = PLANE[id];
   if (!a || s.aircraft.owned.includes(id) || s.gems < a.gems) return false;
@@ -242,36 +319,11 @@ export function equipAircraft(s, id) {
   s.aircraft.equipped = id; return true;
 }
 
-export function talentCost(s, id) { return TALENT[id].cost(s.talents[id] || 0); }
-export function buyTalent(s, id) {
-  const lvl = s.talents[id] || 0, cost = talentCost(s, id);
-  if (lvl >= TALENT[id].max || s.medals < cost) return false;
-  s.medals -= cost; s.talents[id] = lvl + 1; return true;
-}
-
-// ---------- nuova campagna (prestigio) ----------
-export function medalsOnPrestige(s) {
-  const st = s.stats.runMaxStage;
-  return st < PRESTIGE_MIN_STAGE ? 0 : Math.floor(Math.pow((st - 20) / 5, 1.6));
-}
-export function prestige(s) {
-  const gain = medalsOnPrestige(s);
-  if (gain <= 0) return 0;
-  s.medals += gain; s.stats.prestiges++;
-  s.coins = 0; s.kills = 0; s.farming = false; s.enemy = null; s.spawnTimer = 0; s.shotTimer = 0; s.hp = 0;
-  s.up = { cannon: 1, armor: 1, rate: 0, crit: 0, critDmg: 0, cargo: 0 };
-  s.pilots = {};
-  s.stage = 1 + 5 * (s.talents.start || 0);
-  if (isBoss(s.stage)) s.stage += 1;
-  s.stats.runMaxStage = s.stage;
-  return gain;
-}
-
 // ---------- tempo: offline, boost, premi ----------
-export const offlineCap = (s) => (OFFLINE_BASE_HOURS + (s.talents.fuel || 0)) * 3600;
+export const offlineCap = () => OFFLINE_HOURS * 3600;
 export function offlineEarnings(s, seconds, now) {
-  const secs = Math.min(Math.max(0, seconds), offlineCap(s));
-  return { secs, coins: Math.floor(incomePerSec(s, now) * secs * 0.5) };
+  const secs = Math.min(Math.max(0, seconds), offlineCap());
+  return { secs, coins: Math.floor(incomePerSec(s, now) * secs * 0.5), wrenches: Math.floor(secs / 240) };
 }
 export function addBoost(s, seconds, now) {
   s.boostUntil = Math.min(Math.max(s.boostUntil, now) + seconds * 1000, now + BOOST_MAX_SECONDS * 1000);
@@ -285,7 +337,7 @@ export const dailyAvailable = (s, now) => s.daily.last !== dayKey(now);
 export function claimDaily(s, now) {
   if (!dailyAvailable(s, now)) return 0;
   const gems = DAILY_GEMS[s.daily.day % DAILY_GEMS.length];
-  s.daily.day++; s.daily.last = dayKey(now); s.gems += gems;
+  s.daily.day++; s.daily.last = dayKey(now); s.gems += gems; s.wrenches += 20;
   return gems;
 }
 
@@ -302,6 +354,7 @@ export function grantProduct(s, p, now) {
   if (p.once && s.purchased[p.id]) return false;
   if (p.once) s.purchased[p.id] = true;
   if (p.gems) s.gems += p.gems;
+  if (p.wrenches) s.wrenches += p.wrenches;
   if (p.boost) addBoost(s, p.boost, now);
   if (p.perk) s.perks[p.perk] = true;
   return true;

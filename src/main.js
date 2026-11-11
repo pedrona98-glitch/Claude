@@ -43,15 +43,15 @@ ui.render();
 function checkOffline() {
   const away = (Date.now() - app.state.lastSeen) / 1000;
   if (away < OFFLINE_MIN_SECONDS) return;
-  const { secs, coins } = G.offlineEarnings(app.state, away, Date.now());
+  const { secs, coins, wrenches } = G.offlineEarnings(app.state, away, Date.now());
   app.state.lastSeen = Date.now();
-  if (coins > 0 && !ui.hasModal()) ui.showOffline(secs, coins);
+  if (coins > 0 && !ui.hasModal()) ui.showOffline(secs, coins, wrenches);
 }
 checkOffline();
 
 // ---------- ciclo di gioco ----------
 const events = [];
-let last = performance.now(), uiTimer = 0, saveTimer = 0;
+let last = performance.now(), uiTimer = 0, saveTimer = 0, autoTimer = 0;
 let dropAt = performance.now() + 45000;
 
 function frame(ts) {
@@ -62,6 +62,12 @@ function frame(ts) {
   G.tick(s, dt, Date.now(), events);
   handle(events);
   renderer.draw(s, dt);
+  // costruzione automatica: un pezzo ogni terzo di secondo finché ci sono chiavi
+  if (s.auto && (autoTimer += dt) >= 0.33) {
+    autoTimer = 0;
+    const r = G.autoBuild(s);
+    if (r && r.equipped) { ui.flash(r.part.slot); sfx.buy(); }
+  }
   if ((uiTimer += dt) >= 0.2) { uiTimer = 0; ui.refresh(); }
   if ((saveTimer += dt) >= 10) { saveTimer = 0; app.save(); }
   if (ts >= dropAt) {
@@ -80,7 +86,8 @@ function handle(list) {
       if (ev.boss) { sfx.boss(); ui.banner(t('boss_win'), 'good'); } else sfx.kill();
     } else if (ev.t === 'bossFail') { sfx.fail(); ui.banner(t('boss_fail'), 'bad'); }
     else if (ev.t === 'defeat') { sfx.fail(); ui.banner(t('defeat'), 'bad'); }
-    else if (ev.t === 'stage' && !G.isBoss(ev.stage - 1)) ui.banner(t('new_stage', ev.stage));
+    else if (ev.t === 'stage' && !G.isBoss(ev.stage - 1)) ui.banner(t('new_stage', G.stageName(ev.stage)));
+    else if (ev.t === 'workshop') { sfx.reward(); ui.banner(`${t('workshop')} ${ev.level}`, 'good'); }
   }
 }
 
